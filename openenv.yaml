@@ -1,0 +1,6 @@
+name: data_cleaner
+version: "1.0.0"
+description: "The Automated Data Cleaner Hackathon Environment"
+type: custom
+commands:
+  start: "uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 8000"

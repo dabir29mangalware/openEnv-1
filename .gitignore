@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.env
+secret*/
+server_out.txt
+server_err.txt
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
