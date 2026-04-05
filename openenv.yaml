@@ -1,6 +1,16 @@
 name: data_cleaner
-version: "1.0.0"
-description: "The Automated Data Cleaner Hackathon Environment"
+version: "2.0.0"
+description: "Automated Data Cleaner - An RL environment for training AI agents to clean messy real-world datasets"
 type: custom
+tasks:
+  - name: data_cleaning_easy
+    description: "Impute nulls and clean up to 6 columns of a messy dataset"
+    difficulty: easy
+  - name: data_cleaning_medium
+    description: "Impute nulls, clean up to 10 columns, and remove injected duplicate rows"
+    difficulty: medium
+  - name: data_cleaning_hard
+    description: "Full data cleaning: nulls across all columns, duplicates, and text standardization of whitespace noise"
+    difficulty: hard
 commands:
   start: "uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 8000"

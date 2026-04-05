@@ -2,7 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir pandas numpy fastapi uvicorn requests pydantic openai
+RUN pip install --no-cache-dir \
+    openenv-core \
+    pandas \
+    numpy \
+    fastapi \
+    uvicorn \
+    requests \
+    pydantic \
+    openai \
+    urllib3
 
 COPY . .
 
