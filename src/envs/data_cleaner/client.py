@@ -29,23 +29,51 @@ class DataCleanerClient(HTTPEnvClient):
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-    def reset(self, difficulty: str = "easy") -> DataCleanerObservation:
+    def reset(self, difficulty: str = "easy", dataset_path: str = None) -> DataCleanerObservation:
+        params = {"difficulty": difficulty}
+        if dataset_path:
+            params["dataset_path"] = dataset_path
+            
         response = self.session.post(
             f"{self.base_url}/reset",
-            params={"difficulty": difficulty},
+            params=params,
             timeout=self.timeout,
         )
         response.raise_for_status()
         return DataCleanerObservation(**response.json())
 
-    def step(self, action: dict) -> DataCleanerObservation:
+    def upload(self, file_path: str) -> str:
+        with open(file_path, "rb") as f:
+            response = self.session.post(
+                f"{self.base_url}/upload",
+                files={"file": (file_path.split("/")[-1], f, "text/csv")},
+                timeout=self.timeout
+            )
+        response.raise_for_status()
+        return response.json()["dataset_path"]
+
+    def step(self, action: dict) -> tuple:
         response = self.session.post(
             f"{self.base_url}/step",
             json=action,
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return DataCleanerObservation(**response.json())
+        data = response.json()
+        
+        # Handle backward-compatibility if it only returns observation
+        if "observation" in data:
+            obs = DataCleanerObservation(**data["observation"])
+            reward = data["reward"]["value"]
+            done = data["done"]
+            info = data["info"]
+        else:
+            obs = DataCleanerObservation(**data)
+            reward = obs.reward
+            done = obs.done
+            info = {}
+            
+        return obs, reward, done, info
 
     def state(self) -> Dict[str, Any]:
         response = self.session.get(

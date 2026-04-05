@@ -2,13 +2,15 @@ import os
 import sys
 import json
 import time
+import argparse
 from openai import OpenAI
 from src.envs.data_cleaner.client import DataCleanerClient
 
 # ---------------------------------------------------------------------------
 # Configuration from environment variables
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("GROQ_API_KEY", ""))
 
@@ -79,7 +81,7 @@ Strategy:
 3. Standardize text columns if they have whitespace issues.
 4. Finally, SUBMIT_DATASET.
 
-Example output: {"action_type": "IMPUTE_MEAN", "target_column": "CRIM"}"""
+Example output: {"action_type": "IMPUTE_MEAN", "target_column": "column_name"}"""
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +139,7 @@ def call_llm(llm, model: str, messages: list) -> dict:
 # ---------------------------------------------------------------------------
 # Run a single task (difficulty)
 # ---------------------------------------------------------------------------
-def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str):
+def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, dataset_path: str = None):
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     rewards = []
@@ -146,7 +148,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str):
     success = False
 
     try:
-        obs = client.reset(difficulty=difficulty)
+        obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
         print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
         log_end(success=False, steps=0, score=0.0, rewards=[])
@@ -179,8 +181,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str):
         # Execute action
         error = None
         try:
-            obs = client.step(action_dict)
-            reward = obs.reward
+            obs, reward, done, info = client.step(action_dict)
         except Exception as e:
             error = str(e)
             reward = 0.0
@@ -194,8 +195,8 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str):
         if obs.done:
             break
 
-    # Calculate final score: sum of rewards clamped to [0, 1]
-    score = sum(rewards)
+    # Calculate final score: use final reward
+    score = rewards[-1] if rewards else 0.0
     score = min(max(score, 0.0), 1.0)
     success = score >= 0.5
 
@@ -207,23 +208,43 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str):
 # Main entry point
 # ---------------------------------------------------------------------------
 def main():
-    client = DataCleanerClient(base_url=API_BASE_URL)
+    parser = argparse.ArgumentParser(description="Run the Automated Data Cleaner agent.")
+    parser.add_argument("--datasets", nargs="+", type=str, help="One or more paths to local CSV datasets to upload and clean", default=[None])
+    args = parser.parse_args()
 
-    # Determine LLM base URL — support Groq, OpenAI, or custom
-    llm_base_url = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+    client = DataCleanerClient(base_url=ENV_BASE_URL)
+
     llm = OpenAI(
-        base_url=llm_base_url,
+        base_url=API_BASE_URL,
         api_key=HF_TOKEN,
     )
 
-    total_score = 0.0
-    for task in TASKS:
-        score = run_task(client, llm, task["name"], task["difficulty"])
-        total_score += score
-        print(f"[DEBUG] Task '{task['name']}' score: {score:.4f}", flush=True)
+    all_scores = []
 
-    avg_score = total_score / len(TASKS) if TASKS else 0.0
-    print(f"[DEBUG] Average score across all tasks: {avg_score:.4f}", flush=True)
+    for ds_idx, dataset in enumerate(args.datasets):
+        # If user provided a custom dataset, upload it via the API first
+        server_dataset_path = None
+        if dataset:
+            if not os.path.exists(dataset):
+                print(f"[ERROR] Could not find local dataset: {dataset}", flush=True)
+                continue
+            try:
+                print(f"\n{'='*50}\n[DEBUG] Uploading {dataset} to environment server...\n{'='*50}", flush=True)
+                server_dataset_path = client.upload(dataset)
+            except Exception as e:
+                print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
+                continue
+
+        total_score = 0.0
+        for task in TASKS:
+            score = run_task(client, llm, task["name"], task["difficulty"], dataset_path=server_dataset_path)
+            total_score += score
+            all_scores.append(score)
+            print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['name']}' score: {score:.4f}", flush=True)
+
+    if all_scores:
+        avg_score = sum(all_scores) / len(all_scores)
+        print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 
 if __name__ == "__main__":

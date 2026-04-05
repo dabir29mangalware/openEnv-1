@@ -14,33 +14,24 @@ import os
 import sys
 import traceback
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Dataset registry
-# ─────────────────────────────────────────────────────────────────────────────
-DATASETS = {
-    "HousingData": {
-        "file": "HousingData.csv",
-        "description": "Boston Housing dataset (507 rows × 14 cols, pre-existing NAs)",
-        "na_value": "NA",
-    },
-    "Titanic": {
-        "file": "Titanic-Dataset.csv",
-        "description": "Titanic passengers (891 rows × 12 cols, mixed types, real nulls)",
-        "na_value": None,
-    },
-    "Spambase": {
-        "file": "spambase.csv",
-        "description": "Spambase email features (4601 rows × 58 cols, all numeric)",
-        "na_value": None,
-    },
-    "RetailSales": {
-        "file": "retail_sales_dataset.csv",
-        "description": "Retail sales transactions (1000 rows × 9 cols, mixed types)",
-        "na_value": None,
-    },
-}
+import glob
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Dynamic Dataset Discovery
+# ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_datasets():
+    csv_files = glob.glob(os.path.join(BASE_DIR, "*.csv"))
+    datasets = {}
+    for filepath in csv_files:
+        name = os.path.basename(filepath)
+        datasets[name] = {
+            "file": filepath,
+            "description": f"Dynamic dataset target: {name}",
+            "na_value": None,
+        }
+    return datasets
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,10 +178,10 @@ def heuristic_clean(df: pd.DataFrame, max_steps: int = 40) -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 def test_dataset(name: str, config: dict) -> dict:
     """Test one dataset and return results."""
-    filepath = os.path.join(BASE_DIR, config["file"])
+    filepath = config["file"]
 
     if not os.path.exists(filepath):
-        return {"name": name, "status": "SKIP", "error": f"File not found: {config['file']}"}
+        return {"name": name, "status": "SKIP", "error": f"File not found: {filepath}"}
 
     print(f"\n{'='*70}")
     print(f"  DATASET: {name}")
@@ -294,8 +285,13 @@ def main():
     print("  DATA CLEANER — MULTI-DATASET PERFORMANCE TEST")
     print("=" * 70)
 
+    datasets = get_datasets()
+    if not datasets:
+        print("  No .csv datasets found in the directory!")
+        return
+
     results = []
-    for name, config in DATASETS.items():
+    for name, config in datasets.items():
         result = test_dataset(name, config)
         results.append(result)
 

@@ -21,10 +21,7 @@ from ..models import (
 # Step limits per difficulty
 STEP_LIMITS = {"easy": 15, "medium": 25, "hard": 40}
 
-# Columns included per difficulty (subset of HousingData columns)
-EASY_COLS = ["id", "CRIM", "ZN", "INDUS", "CHAS", "MEDV"]
-MEDIUM_COLS = ["id", "CRIM", "ZN", "INDUS", "CHAS", "NOX", "RM", "AGE", "DIS", "MEDV"]
-# Hard = all columns
+
 
 
 class DataCleanerEnvironment(Environment):
@@ -42,8 +39,11 @@ class DataCleanerEnvironment(Environment):
     # Dataset generation
     # ------------------------------------------------------------------
 
-    def _load_raw_csv(self) -> pd.DataFrame:
-        """Load a random CSV dataset from available candidates."""
+    def _load_raw_csv(self, dataset_path: str = None) -> pd.DataFrame:
+        """Load a CSV dataset. If dataset_path is provided, use it."""
+        if dataset_path and os.path.exists(dataset_path):
+            return pd.read_csv(dataset_path, na_values=["NA", "N/A", "null"])
+
         candidates = []
         # Search locally and in the parent directory
         search_dirs = [
@@ -63,14 +63,16 @@ class DataCleanerEnvironment(Environment):
             raise FileNotFoundError("No CSV files found in environment directories.")
             
         import random
+        candidates.sort() # Ensure reproducible ordering
+        random.seed(42)
         path = random.choice(candidates)
         # Read with common NA patterns
         return pd.read_csv(path, na_values=["NA", "N/A", "null"])
 
     def _generate_dataset(
-        self, difficulty: str = "easy"
+        self, difficulty: str = "easy", dataset_path: str = None
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        raw = self._load_raw_csv()
+        raw = self._load_raw_csv(dataset_path)
 
         # Ensure id column
         if "id" not in raw.columns:
@@ -98,16 +100,6 @@ class DataCleanerEnvironment(Environment):
             
         messy_df = raw[cols].copy()
         perfect_df = perfect_df[cols].copy()
-
-        # --- Build perfect answer key ---
-        perfect_df = messy_df.copy()
-        for col in perfect_df.columns:
-            if col == "id":
-                continue
-            if perfect_df[col].isnull().any() and pd.api.types.is_numeric_dtype(
-                perfect_df[col]
-            ):
-                perfect_df[col] = perfect_df[col].fillna(perfect_df[col].mean())
 
         # --- Inject additional mess for medium/hard ---
         if difficulty in ("medium", "hard"):
@@ -210,9 +202,9 @@ class DataCleanerEnvironment(Environment):
     # Core API: reset / step / state
     # ------------------------------------------------------------------
 
-    def reset(self, difficulty: str = "easy") -> DataCleanerObservation:
+    def reset(self, difficulty: str = "easy", dataset_path: str = None) -> DataCleanerObservation:
         self.difficulty = difficulty if difficulty in STEP_LIMITS else "easy"
-        self.df, self.perfect_df = self._generate_dataset(self.difficulty)
+        self.df, self.perfect_df = self._generate_dataset(self.difficulty, dataset_path)
         self.done = False
         self._state = DataCleanerState(
             episode_id=str(uuid4()),
@@ -372,8 +364,8 @@ class DataCleanerEnvironment(Environment):
         else:
             self.df = self.df.drop(columns=[col])
             self._invalidate_cache()
-            # Penalty for dropping non-empty column
-            return f"Dropped non-empty column: {col} (penalty applied)", -0.05
+            # Penalty for dropping non-empty column updated to 0.0 to prevent negative scores
+            return f"Dropped non-empty column: {col} (penalty applied)", 0.0
 
     def _action_remove_duplicates(self) -> Tuple[str, float]:
         initial_len = len(self.df)
@@ -470,3 +462,28 @@ class DataCleanerEnvironment(Environment):
         if not self.df[col].equals(old):
             return f"Standardized text in column: {col}.", 0.0
         return f"No text changes needed in column '{col}'.", 0.0
+
+
+# ------------------------------------------------------------------
+# Standalone Task Graders
+# ------------------------------------------------------------------
+def grade_data_cleaning_easy(*args, **kwargs) -> float:
+    # Programmatic grader for easy task
+    env = kwargs.get("env")
+    if env and hasattr(env, "_compute_similarity"):
+        return env._compute_similarity()
+    return 0.0
+
+def grade_data_cleaning_medium(*args, **kwargs) -> float:
+    # Programmatic grader for medium task
+    env = kwargs.get("env")
+    if env and hasattr(env, "_compute_similarity"):
+        return env._compute_similarity()
+    return 0.0
+
+def grade_data_cleaning_hard(*args, **kwargs) -> float:
+    # Programmatic grader for hard task
+    env = kwargs.get("env")
+    if env and hasattr(env, "_compute_similarity"):
+        return env._compute_similarity()
+    return 0.0

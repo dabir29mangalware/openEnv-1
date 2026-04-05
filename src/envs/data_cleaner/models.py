@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 # Import OpenEnv base classes (Pydantic-based)
 try:
-    from openenv.core.env_server import Action, Observation, State
+    from openenv.core.env_server import Action, Observation, State, Reward
 except ImportError:
     # Fallback Pydantic base classes if openenv-core is not installed
     class Action(BaseModel):
@@ -14,6 +14,9 @@ except ImportError:
         pass
 
     class State(BaseModel):
+        pass
+
+    class Reward(BaseModel):
         pass
 
 
@@ -50,3 +53,7 @@ class DataCleanerState(State):
     step_count: int
     total_reward: float
     difficulty: str = "easy"
+
+
+class DataCleanerReward(Reward):
+    value: float

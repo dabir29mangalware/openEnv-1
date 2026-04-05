@@ -15,7 +15,7 @@ Data cleaning is one of the most common and time-consuming tasks in real-world d
 - **Standardize text formatting** (whitespace, casing)
 - **Format specialized columns** (phone numbers, dates)
 
-The environment uses the **Boston Housing Dataset** (`HousingData (1).csv`) with programmatically injected messiness that increases with difficulty level.
+The environment can use any target CSV. By default it randomly loads a local `.csv` file with programmatically injected messiness that increases with difficulty level.
 
 ---
 
@@ -35,7 +35,7 @@ The agent can take the following actions:
 | `FORMAT_DATE` | ✅ | Format dates to `YYYY-MM-DD` |
 | `SUBMIT_DATASET` | ❌ | Submit the cleaned dataset for final scoring |
 
-**Action format:** `{"action_type": "IMPUTE_MEAN", "target_column": "CRIM"}`
+**Action format:** `{"action_type": "IMPUTE_MEAN", "target_column": "target_col_name"}`
 
 ---
 
@@ -60,9 +60,9 @@ Each step returns a `DataCleanerObservation` with:
 
 | Task | Difficulty | Columns | Mess Injected | Max Steps | Expected Score |
 |------|-----------|---------|---------------|-----------|----------------|
-| `data_cleaning_easy` | Easy | 6 cols (CRIM, ZN, INDUS, CHAS, MEDV) | Nulls in 3 numeric columns | 15 | 0.8–1.0 |
-| `data_cleaning_medium` | Medium | 10 cols | Nulls in 7 columns + 5 duplicate rows | 25 | 0.6–0.9 |
-| `data_cleaning_hard` | Hard | All 14 cols | All nulls + duplicates + whitespace noise | 40 | 0.4–0.8 |
+| `data_cleaning_easy` | Easy | 6 random cols | Nulls in 3 numeric columns | 15 | 0.8–1.0 |
+| `data_cleaning_medium` | Medium | 10 random cols | Nulls in 7 columns + 5 duplicate rows | 25 | 0.6–0.9 |
+| `data_cleaning_hard` | Hard | All cols | All nulls + duplicates + whitespace noise | 40 | 0.4–0.8 |
 
 ---
 
@@ -156,7 +156,7 @@ openEnv-1/
 ├── test_heuristic.py                     # Heuristic test script
 ├── openenv.yaml                          # OpenEnv manifest
 ├── Dockerfile                            # Container definition
-├── HousingData (1).csv                   # Dataset
+├── target_dataset.csv                    # Dataset used optionally
 ├── README.md                             # This file
 └── src/
     └── envs/
