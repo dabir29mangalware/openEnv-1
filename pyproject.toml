@@ -7,12 +7,16 @@ name = "data-cleaner-env"
 version = "0.1.0"
 description = "A data cleaner reinforcement learning environment for OpenEnv"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "pandas",
     "numpy",
     "openai",
     "fastapi",
     "uvicorn",
-    "pydantic"
+    "pydantic",
+    "openenv-core>=0.2.0"
 ]
+
+[project.scripts]
+server = "server.app:main"
