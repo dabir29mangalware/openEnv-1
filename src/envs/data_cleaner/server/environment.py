@@ -60,7 +60,13 @@ class DataCleanerEnvironment(Environment):
         # Deduplicate paths and filter
         candidates = list(set(candidates))
         if not candidates:
-            raise FileNotFoundError("No CSV files found in environment directories.")
+            print("[WARN] No CSV files found. Falling back to dummy generative dataset.")
+            return pd.DataFrame({
+                "id": [1, 2, 3, 4, 5],
+                "age": [25.0, np.nan, 30.0, 22.0, np.nan],
+                "name": [" Alice", "Bob", "Charlie ", "David", " Eve"],
+                "score": [85.5, 90.0, np.nan, 88.5, 92.0]
+            })
             
         import random
         candidates.sort() # Ensure reproducible ordering
