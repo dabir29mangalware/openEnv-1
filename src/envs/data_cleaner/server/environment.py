@@ -476,20 +476,23 @@ class DataCleanerEnvironment(Environment):
 def grade_data_cleaning_easy(*args, **kwargs) -> float:
     # Programmatic grader for easy task
     env = kwargs.get("env")
+    score = 0.0
     if env and hasattr(env, "_compute_similarity"):
-        return env._compute_similarity()
-    return 0.0
+        score = env._compute_similarity()
+    return max(0.0001, min(0.9999, float(score)))
 
 def grade_data_cleaning_medium(*args, **kwargs) -> float:
     # Programmatic grader for medium task
     env = kwargs.get("env")
+    score = 0.0
     if env and hasattr(env, "_compute_similarity"):
-        return env._compute_similarity()
-    return 0.0
+        score = env._compute_similarity()
+    return max(0.0001, min(0.9999, float(score)))
 
 def grade_data_cleaning_hard(*args, **kwargs) -> float:
     # Programmatic grader for hard task
     env = kwargs.get("env")
+    score = 0.0
     if env and hasattr(env, "_compute_similarity"):
-        return env._compute_similarity()
-    return 0.0
+        score = env._compute_similarity()
+    return max(0.0001, min(0.9999, float(score)))
