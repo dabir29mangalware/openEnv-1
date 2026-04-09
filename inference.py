@@ -4,7 +4,10 @@ import json
 import time
 import argparse
 from openai import OpenAI
-from src.envs.data_cleaner.client import DataCleanerClient
+
+# Add 'src' to the module search path to satisfy static analyzers and local execution
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
+from envs.data_cleaner.client import DataCleanerClient
 
 # ---------------------------------------------------------------------------
 # Configuration from environment variables
@@ -40,7 +43,7 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
     payload = {
         "step": step,
         "action": action,
-        "reward": reward,
+        "reward": round(max(0.0001, min(0.9999, float(reward))), 4),
         "done": done,
         "error": str(error) if error else None,
     }
@@ -51,8 +54,8 @@ def log_end(success: bool, steps: int, score: float, rewards: list):
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(score, 4),
-        "rewards": [round(r, 4) for r in rewards],
+        "score": round(max(0.0001, min(0.9999, float(score))), 4),
+        "rewards": [round(max(0.0001, min(0.9999, float(r))), 4) for r in rewards],
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -162,8 +165,8 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
         obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
         print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
-        log_end(success=False, steps=0, score=0.0, rewards=[])
-        return 0.0
+        log_end(success=False, steps=0, score=0.0001, rewards=[])
+        return 0.0001
 
     # Message history with sliding window
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -208,7 +211,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
 
     # Calculate final score: use final reward
     score = rewards[-1] if rewards else 0.0
-    score = min(max(score, 0.0), 1.0)
+    score = max(0.0001, min(0.9999, float(score)))
     success = score >= 0.5
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)

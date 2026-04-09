@@ -248,7 +248,7 @@ def test_dataset(name: str, config: dict) -> dict:
         print(f"     Improvement: +{improvement:.4f}")
 
         # Final score (normalized)
-        score = min(max(post_similarity, 0.0), 1.0)
+        score = max(0.0001, min(0.9999, float(post_similarity)))
         status = "PASS" if score >= 0.5 else "FAIL"
         print(f"\n  ✅ Score: {score:.4f}  [{status}]")
 
