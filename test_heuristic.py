@@ -80,7 +80,7 @@ def run_smart_heuristic(client: DataCleanerClient, difficulty: str) -> float:
 
         time.sleep(0.1)  # Small delay to not overwhelm server
 
-    score = max(0.0001, min(0.9999, float(score)))
+    score = max(0.01, min(0.99, float(score)))
     print(f"[HEURISTIC] Difficulty '{difficulty}' => Final Score: {score:.4f}")
     assert 0.0 < score < 1.0, f"Score {score} outside expected range!"
     return score
@@ -111,8 +111,8 @@ def main():
         status = "PASS" if sc > 0.0 else "FAIL"
         print(f"  {diff:<10} => {sc:.4f}  [{status}]")
 
-    avg = sum(scores.values()) / len(scores) if scores else 0.0001
-    avg = max(0.0001, min(0.9999, float(avg)))
+    avg = sum(scores.values()) / len(scores) if scores else 0.01
+    avg = max(0.01, min(0.99, float(avg)))
     print(f"\n  Average Score: {avg:.4f}")
 
     # Verify state endpoint

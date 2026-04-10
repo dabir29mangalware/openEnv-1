@@ -236,13 +236,13 @@ class DataCleanerEnvironment(Environment):
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
-        state_dict["total_reward"] = max(0.0001, min(0.9999, float(state_dict["total_reward"])))
+        state_dict["total_reward"] = max(0.01, min(0.99, float(state_dict["total_reward"])))
         return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
-        clamped_reward = max(0.0001, min(0.9999, float(reward)))
+        clamped_reward = max(0.01, min(0.99, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -482,7 +482,7 @@ def grade_data_cleaning_easy(*args, **kwargs) -> float:
     score = 0.0
     if env and hasattr(env, "_compute_similarity"):
         score = env._compute_similarity()
-    return max(0.0001, min(0.9999, float(score)))
+    return max(0.01, min(0.99, float(score)))
 
 def grade_data_cleaning_medium(*args, **kwargs) -> float:
     # Programmatic grader for medium task
@@ -490,7 +490,7 @@ def grade_data_cleaning_medium(*args, **kwargs) -> float:
     score = 0.0
     if env and hasattr(env, "_compute_similarity"):
         score = env._compute_similarity()
-    return max(0.0001, min(0.9999, float(score)))
+    return max(0.01, min(0.99, float(score)))
 
 def grade_data_cleaning_hard(*args, **kwargs) -> float:
     # Programmatic grader for hard task
@@ -498,4 +498,4 @@ def grade_data_cleaning_hard(*args, **kwargs) -> float:
     score = 0.0
     if env and hasattr(env, "_compute_similarity"):
         score = env._compute_similarity()
-    return max(0.0001, min(0.9999, float(score)))
+    return max(0.01, min(0.99, float(score)))
