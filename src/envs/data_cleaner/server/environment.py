@@ -232,14 +232,17 @@ class DataCleanerEnvironment(Environment):
             return {
                 "episode_id": "",
                 "step_count": 0,
-                "total_reward": 0.0,
+                "total_reward": 0.0001,
                 "difficulty": "easy",
             }
-        return self._state.model_dump()
+        state_dict = self._state.model_dump()
+        state_dict["total_reward"] = max(0.0001, min(0.9999, float(state_dict["total_reward"])))
+        return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
+        clamped_reward = max(0.0001, min(0.9999, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -269,7 +272,7 @@ class DataCleanerEnvironment(Environment):
             current_view=current_view,
             feedback=feedback,
             done=self.done,
-            reward=reward,
+            reward=clamped_reward,
             step_count=step_count,
             max_steps=max_steps,
             difficulty=self.difficulty,

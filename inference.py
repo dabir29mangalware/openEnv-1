@@ -258,6 +258,7 @@ def main():
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)
+        avg_score = max(0.0001, min(0.9999, float(avg_score)))
         print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 

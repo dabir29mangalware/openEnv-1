@@ -318,7 +318,8 @@ def main():
             )
 
     n = len([r for r in results if r["status"] not in ("SKIP", "ERROR")])
-    avg_score = total_score / n if n > 0 else 0.0
+    avg_score = total_score / n if n > 0 else 0.0001
+    avg_score = max(0.0001, min(0.9999, float(avg_score)))
     print(f"\n  Average Score: {avg_score:.4f} | Passed: {passed}/{n}")
 
     # Performance assessment
