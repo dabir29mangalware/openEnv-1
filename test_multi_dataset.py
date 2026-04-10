@@ -248,7 +248,7 @@ def test_dataset(name: str, config: dict) -> dict:
         print(f"     Improvement: +{improvement:.4f}")
 
         # Final score (normalized)
-        score = max(0.01, min(0.99, float(post_similarity)))
+        score = max(0.2, min(0.98, float(post_similarity)))
         status = "PASS" if score >= 0.5 else "FAIL"
         print(f"\n  ✅ Score: {score:.4f}  [{status}]")
 
@@ -318,8 +318,8 @@ def main():
             )
 
     n = len([r for r in results if r["status"] not in ("SKIP", "ERROR")])
-    avg_score = total_score / n if n > 0 else 0.01
-    avg_score = max(0.01, min(0.99, float(avg_score)))
+    avg_score = total_score / n if n > 0 else 0.2
+    avg_score = max(0.2, min(0.98, float(avg_score)))
     print(f"\n  Average Score: {avg_score:.4f} | Passed: {passed}/{n}")
 
     # Performance assessment

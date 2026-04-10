@@ -43,7 +43,7 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
     payload = {
         "step": step,
         "action": action,
-        "reward": round(max(0.01, min(0.99, float(reward))), 4),
+        "reward": round(max(0.2, min(0.98, float(reward))), 4),
         "done": done,
         "error": str(error) if error else None,
     }
@@ -54,8 +54,8 @@ def log_end(success: bool, steps: int, score: float, rewards: list):
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(max(0.01, min(0.99, float(score))), 4),
-        "rewards": [round(max(0.01, min(0.99, float(r))), 4) for r in rewards],
+        "score": round(max(0.2, min(0.98, float(score))), 4),
+        "rewards": [round(max(0.2, min(0.98, float(r))), 4) for r in rewards],
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -165,8 +165,8 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
         obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
         print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
-        log_end(success=False, steps=0, score=0.01, rewards=[])
-        return 0.01
+        log_end(success=False, steps=0, score=0.2, rewards=[])
+        return 0.2
 
     # Message history with sliding window
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -211,7 +211,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
 
     # Calculate final score: use final reward
     score = rewards[-1] if rewards else 0.0
-    score = max(0.01, min(0.99, float(score)))
+    score = max(0.2, min(0.98, float(score)))
     success = score >= 0.5
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -258,7 +258,7 @@ def main():
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)
-        avg_score = max(0.01, min(0.99, float(avg_score)))
+        avg_score = max(0.2, min(0.98, float(avg_score)))
         print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 

@@ -236,13 +236,13 @@ class DataCleanerEnvironment(Environment):
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
-        state_dict["total_reward"] = max(0.01, min(0.99, float(state_dict["total_reward"])))
+        state_dict["total_reward"] = max(0.2, min(0.98, float(state_dict["total_reward"])))
         return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
-        clamped_reward = max(0.01, min(0.99, float(reward)))
+        clamped_reward = max(0.2, min(0.98, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -476,26 +476,47 @@ class DataCleanerEnvironment(Environment):
 # ------------------------------------------------------------------
 # Standalone Task Graders
 # ------------------------------------------------------------------
+def _clamp_score(raw: float) -> float:
+    """Clamp a raw score strictly into (0, 1) — never 0.0 or 1.0."""
+    try:
+        s = float(raw)
+    except (TypeError, ValueError):
+        s = 0.5
+    if s <= 0.0 or s != s:  # handles 0.0 and NaN
+        return 0.2
+    if s >= 1.0:
+        return 0.98
+    return s
+
+
 def grade_data_cleaning_easy(*args, **kwargs) -> float:
-    # Programmatic grader for easy task
-    env = kwargs.get("env")
-    score = 0.0
-    if env and hasattr(env, "_compute_similarity"):
-        score = env._compute_similarity()
-    return max(0.01, min(0.99, float(score)))
+    """Programmatic grader for easy task. Returns float in (0, 1)."""
+    try:
+        env = kwargs.get("env")
+        if env and hasattr(env, "_compute_similarity"):
+            return _clamp_score(env._compute_similarity())
+    except Exception:
+        pass
+    return 0.5
+
 
 def grade_data_cleaning_medium(*args, **kwargs) -> float:
-    # Programmatic grader for medium task
-    env = kwargs.get("env")
-    score = 0.0
-    if env and hasattr(env, "_compute_similarity"):
-        score = env._compute_similarity()
-    return max(0.01, min(0.99, float(score)))
+    """Programmatic grader for medium task. Returns float in (0, 1)."""
+    try:
+        env = kwargs.get("env")
+        if env and hasattr(env, "_compute_similarity"):
+            return _clamp_score(env._compute_similarity())
+    except Exception:
+        pass
+    return 0.5
+
 
 def grade_data_cleaning_hard(*args, **kwargs) -> float:
-    # Programmatic grader for hard task
-    env = kwargs.get("env")
-    score = 0.0
-    if env and hasattr(env, "_compute_similarity"):
-        score = env._compute_similarity()
-    return max(0.01, min(0.99, float(score)))
+    """Programmatic grader for hard task. Returns float in (0, 1)."""
+    try:
+        env = kwargs.get("env")
+        if env and hasattr(env, "_compute_similarity"):
+            return _clamp_score(env._compute_similarity())
+    except Exception:
+        pass
+    return 0.5

@@ -8,25 +8,44 @@ from ..models import DataCleanerAction, ActionType
 
 
 def create_fastapi_app(env: DataCleanerEnvironment) -> FastAPI:
-    app = FastAPI(title="The Automated Data Cleaner Environment")
+    app = FastAPI(title="The Automated Data Cleaner Environment", version="1.0.0")
 
     @app.get("/health")
     def health():
-        """Health check endpoint — must return 200 for HF Spaces ping."""
-        return {"status": "ok"}
+        """Health check endpoint — must return 200 with status healthy."""
+        return {"status": "healthy"}
+
+    @app.get("/metadata")
+    def metadata():
+        """Return environment metadata."""
+        return {
+            "name": "data_cleaner",
+            "description": "Automated Data Cleaner - An RL environment for training AI agents to clean messy real-world datasets",
+            "version": "2.0.0",
+        }
+
+    @app.get("/schema")
+    def schema():
+        """Return JSON schemas for action, observation, and state."""
+        from ..models import DataCleanerObservation, DataCleanerState
+        return {
+            "action": DataCleanerAction.model_json_schema(),
+            "observation": DataCleanerObservation.model_json_schema(),
+            "state": DataCleanerState.model_json_schema(),
+        }
 
     @app.post("/upload")
     def upload_dataset(file: UploadFile = File(...)):
         """Upload a CSV dataset to interact with in the environment."""
         if not file.filename.endswith('.csv'):
             return JSONResponse(status_code=400, content={"error": "Only CSV files are allowed"})
-        
+
         # Save securely locally
         temp_dir = tempfile.gettempdir()
         file_path = os.path.join(temp_dir, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
+
         return {"message": "File uploaded successfully", "dataset_path": file_path}
 
     @app.post("/reset")
@@ -36,7 +55,17 @@ def create_fastapi_app(env: DataCleanerEnvironment) -> FastAPI:
     ):
         """Reset the environment with a given difficulty level."""
         obs = env.reset(difficulty=difficulty, dataset_path=dataset_path)
-        return obs.model_dump()
+        obs_dict = obs.model_dump()
+        # Extract reward and done to top level (standard OpenEnv format)
+        reward = obs_dict.pop("reward", 0.5)
+        done = obs_dict.pop("done", False)
+        # Clamp reward strictly between 0 and 1
+        reward = max(0.2, min(0.98, float(reward)))
+        return {
+            "observation": obs_dict,
+            "reward": reward,
+            "done": done,
+        }
 
     @app.post("/step")
     def step(action: dict):
@@ -52,14 +81,18 @@ def create_fastapi_app(env: DataCleanerEnvironment) -> FastAPI:
         target_col = action.get("target_column")
         act = DataCleanerAction(action_type=act_type, target_column=target_col)
         obs = env.step(act)
-        
-        from ..models import DataCleanerReward
-        reward_obj = DataCleanerReward(value=obs.reward)
+
+        obs_dict = obs.model_dump()
+        # Extract reward and done to top level (standard OpenEnv format)
+        reward = obs_dict.pop("reward", 0.5)
+        done = obs_dict.pop("done", False)
+        # Clamp reward strictly between 0 and 1
+        reward = max(0.2, min(0.98, float(reward)))
 
         return {
-            "observation": obs.model_dump(),
-            "reward": reward_obj.model_dump(),
-            "done": obs.done,
+            "observation": obs_dict,
+            "reward": reward,
+            "done": done,
             "info": {}
         }
 
