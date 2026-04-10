@@ -11,11 +11,27 @@ from envs.data_cleaner.client import DataCleanerClient
 
 # ---------------------------------------------------------------------------
 # Configuration from environment variables
+# The hackathon platform injects API_BASE_URL and API_KEY — we MUST use them.
 # ---------------------------------------------------------------------------
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
+# LLM proxy (MUST use platform-provided values)
+try:
+    API_BASE_URL = os.environ["API_BASE_URL"]
+except KeyError:
+    API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
+
+try:
+    API_KEY = os.environ["API_KEY"]
+except KeyError:
+    API_KEY = os.getenv("HF_TOKEN", os.getenv("GROQ_API_KEY", ""))
+
 MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
-API_KEY = os.getenv("API_KEY", os.getenv("HF_TOKEN", os.getenv("GROQ_API_KEY", "")))
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+
+# Debug: show which API endpoint and (masked) key are in use
+print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
+print(f"[DEBUG] API_KEY = {API_KEY[:8]}...{API_KEY[-4:]}" if len(API_KEY) > 12 else f"[DEBUG] API_KEY = (short/empty)", flush=True)
+print(f"[DEBUG] MODEL_NAME = {MODEL_NAME}", flush=True)
+print(f"[DEBUG] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 # Inference parameters
 MAX_HISTORY_PAIRS = 6  # Sliding window: keep last N user/assistant pairs
@@ -228,10 +244,21 @@ def main():
 
     client = DataCleanerClient(base_url=ENV_BASE_URL)
 
+    # Wait for the environment server to be ready (up to 30s)
+    print("[DEBUG] Waiting for environment server...", flush=True)
+    for attempt in range(15):
+        if client.health():
+            print(f"[DEBUG] Server healthy after {attempt + 1} attempts.", flush=True)
+            break
+        time.sleep(2)
+    else:
+        print("[WARN] Server not healthy after 30s, proceeding anyway...", flush=True)
+
     llm = OpenAI(
         base_url=API_BASE_URL,
         api_key=API_KEY,
     )
+    print(f"[DEBUG] OpenAI client created with base_url={API_BASE_URL}", flush=True)
 
     all_scores = []
 
