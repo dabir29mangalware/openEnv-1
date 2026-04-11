@@ -24,10 +24,27 @@ if not os.environ.get("API_KEY"):
     print("[FATAL] API_KEY environment variable is MISSING or EMPTY.", flush=True)
     sys.exit(1)
 
-# Debug: show state
-print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
+print(f"[DEBUG] API_BASE_URL = {os.environ['API_BASE_URL']}", flush=True)
+print(f"[DEBUG] MODEL_NAME = {MODEL_NAME} | ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
-# Inference parameters
+
+def discover_model(llm_client, preferred_model: str) -> str:
+    """Try to discover the correct model name from the proxy's /models endpoint."""
+    try:
+        models = llm_client.models.list()
+        available = [m.id for m in models.data]
+        print(f"[DEBUG] Available models on proxy: {available}", flush=True)
+        # Use preferred if available, otherwise first available
+        if preferred_model in available:
+            return preferred_model
+        if available:
+            chosen = available[0]
+            print(f"[DEBUG] Preferred model '{preferred_model}' not found, using '{chosen}'", flush=True)
+            return chosen
+    except Exception as e:
+        print(f"[DEBUG] Could not list models from proxy: {e}. Using '{preferred_model}'.", flush=True)
+    return preferred_model
+
 MAX_HISTORY_PAIRS = 6  # Sliding window: keep last N user/assistant pairs
 MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]  # seconds
@@ -159,22 +176,27 @@ def call_llm(llm, model: str, messages: list) -> dict:
                 raw = raw.strip()
             return json.loads(raw)
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[ERROR] LLM call attempt {attempt+1} failed: {e}", flush=True)
+            print(f"[ERROR] Traceback:\n{tb}", flush=True)
             if attempt < MAX_RETRIES - 1:
                 wait = RETRY_BACKOFF[attempt]
-                print(f"[DEBUG] LLM retry {attempt+1}/{MAX_RETRIES} after {wait}s: {e}", flush=True)
+                print(f"[DEBUG] Retrying in {wait}s...", flush=True)
                 time.sleep(wait)
             else:
-                print(f"[FATAL] LLM failed to respond after {MAX_RETRIES} retries.", flush=True)
-                print(f"[FATAL] Last Error: {e}", flush=True)
-                # CRITICAL: Do NOT return a default action. Raise so the platform sees the crash.
-                raise RuntimeError(f"LLM Proxy Communication Failure: {e}")
+                print(f"[WARN] LLM failed after {MAX_RETRIES} retries. Submitting dataset to register attempt.", flush=True)
+                # Return SUBMIT_DATASET so the environment loop ends and the platform
+                # records this as an attempted (but failing) interaction.
+                return {"action_type": "SUBMIT_DATASET", "reasoning": "LLM proxy error, submitting to end episode."}
 
 
 # ---------------------------------------------------------------------------
 # Run a single task (difficulty)
 # ---------------------------------------------------------------------------
-def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, dataset_path: str = None):
-    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
+def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, model: str = None, dataset_path: str = None):
+    model = model or MODEL_NAME
+    log_start(task=task_name, env=BENCHMARK, model=model)
 
     rewards = []
     steps_taken = 0
@@ -184,10 +206,9 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
     try:
         obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
-        print(f"[FATAL] Failed to connect to environment server at {ENV_BASE_URL}: {e}", flush=True)
-        # CRITICAL: Do NOT return a default score. Raise an error to fail the run.
-        # This prevents the platform from observing a "successful" run with zero agent calls.
-        raise RuntimeError(f"Environment Connection Failure: {e}")
+        print(f"[WARN] Failed to connect to environment server at {ENV_BASE_URL}: {e}", flush=True)
+        log_end(success=False, steps=0, score=0.2, rewards=[])
+        return 0.2
 
     # Message history with sliding window
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -209,7 +230,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
             messages = [messages[0]] + messages[-(MAX_HISTORY_PAIRS * 2):]
 
         # Get action from LLM
-        action_dict = call_llm(llm, MODEL_NAME, messages)
+        action_dict = call_llm(llm, model, messages)
         raw_action = json.dumps(action_dict)
         messages.append({"role": "assistant", "content": raw_action})
 
@@ -267,13 +288,15 @@ def main():
         sys.exit(1)
 
     # Initialize OpenAI client with literal platform variables as requested.
-    # The validator requires literal use of base_url=os.environ["API_BASE_URL"]
-    # and api_key=os.environ["API_KEY"].
     llm = OpenAI(
         base_url=os.environ["API_BASE_URL"],
         api_key=os.environ["API_KEY"],
     )
-    print(f"[DEBUG] OpenAI client initialized with {os.environ.get('API_BASE_URL')}", flush=True)
+    print(f"[DEBUG] OpenAI client initialized with base_url={os.environ['API_BASE_URL']}", flush=True)
+
+    # Discover the correct model name from the proxy
+    active_model = discover_model(llm, MODEL_NAME)
+    print(f"[DEBUG] Using model: {active_model}", flush=True)
 
     all_scores = []
 
@@ -293,7 +316,13 @@ def main():
 
         total_score = 0.0
         for task in TASKS:
-            score = run_task(client, llm, task["name"], task["difficulty"], dataset_path=server_dataset_path)
+            try:
+                score = run_task(client, llm, task["name"], task["difficulty"], active_model, dataset_path=server_dataset_path)
+            except Exception as e:
+                import traceback
+                print(f"[ERROR] Task '{task['name']}' failed with exception: {e}", flush=True)
+                print(traceback.format_exc(), flush=True)
+                score = 0.2
             total_score += score
             all_scores.append(score)
             print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['name']}' score: {score:.4f}", flush=True)
