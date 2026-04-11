@@ -1,3 +1,12 @@
+---
+title: Openenv Data Cleaner
+emoji: 🧹
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # 🧹 Automated Data Cleaner — OpenEnv Environment
 
 An RL environment for training AI agents to clean messy real-world datasets. Built with the [OpenEnv](https://github.com/meta-pytorch/OpenEnv) framework.
