@@ -239,14 +239,14 @@ class DataCleanerEnvironment(Environment):
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
-        state_dict["total_reward"] = max(0.2, min(0.98, float(state_dict["total_reward"])))
+        state_dict["total_reward"] = max(0.2, min(0.95, float(state_dict["total_reward"])))
         return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
-        # Strict clamp: never 0.0 or 1.0
-        clamped_reward = max(0.0001, min(0.9999, float(reward)))
+        # Strict clamp: never 0.0 or 1.0, keep within (0.2, 0.95)
+        clamped_reward = max(0.2, min(0.95, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -337,8 +337,7 @@ class DataCleanerEnvironment(Environment):
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
             delta = new_sim - old_similarity
-            # Clamp delta: minimum 0.0001 (not 0.0) so step is always observed
-            reward = round(max(delta, 0.0001), 4)
+            reward = round(max(0.0001, min(0.9499, delta)), 4) if delta > 0 else 0.2001
             self._last_similarity = new_sim
 
         self._state.total_reward += reward
@@ -351,7 +350,7 @@ class DataCleanerEnvironment(Environment):
     def _do_submit(self, context_msg: str) -> DataCleanerObservation:
         similarity = self._compute_similarity()  # already clamped to (0.0001, 0.9999)
         # Apply strict clamp again for safety
-        reward = round(max(0.0001, min(0.9999, similarity)), 4)
+        reward = round(max(0.2, min(0.95, similarity)), 4)
         self.done = True
         self._state.total_reward += reward
 
@@ -483,21 +482,16 @@ class DataCleanerEnvironment(Environment):
 # Standalone Task Graders
 # ------------------------------------------------------------------
 def _clamp_score(raw: float) -> float:
-    """Clamp a raw score strictly into (0, 1) — never 0.0 or 1.0."""
+    """Clamp a raw score strictly into (0.2, 0.95) as advised."""
     try:
         s = float(raw)
     except (TypeError, ValueError):
         s = 0.5
-    if not (0.0 < s < 1.0) or s != s:  # handles out-of-range and NaN
-        if s <= 0.0 or s != s:
-            return 0.0001
-        if s >= 1.0:
-            return 0.9999
-    return s
+    return max(0.2, min(0.95, s))
 
 
 def grade_data_cleaning_easy(*args, **kwargs) -> float:
-    """Programmatic grader for easy task. Returns float in (0, 1)."""
+    """Programmatic grader for easy task. Returns float strictly in (0.2, 0.95)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):
@@ -508,7 +502,7 @@ def grade_data_cleaning_easy(*args, **kwargs) -> float:
 
 
 def grade_data_cleaning_medium(*args, **kwargs) -> float:
-    """Programmatic grader for medium task. Returns float in (0, 1)."""
+    """Programmatic grader for medium task. Returns float strictly in (0.2, 0.95)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):
@@ -519,7 +513,7 @@ def grade_data_cleaning_medium(*args, **kwargs) -> float:
 
 
 def grade_data_cleaning_hard(*args, **kwargs) -> float:
-    """Programmatic grader for hard task. Returns float in (0, 1)."""
+    """Programmatic grader for hard task. Returns float strictly in (0.2, 0.95)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):

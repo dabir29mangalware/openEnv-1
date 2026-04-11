@@ -70,7 +70,7 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
     payload = {
         "step": step,
         "action": action,
-        "reward": round(max(0.2, min(0.98, float(reward))), 4),
+        "reward": round(max(0.2, min(0.95, float(reward))), 4),
         "done": done,
         "error": str(error) if error else None,
     }
@@ -81,8 +81,8 @@ def log_end(success: bool, steps: int, score: float, rewards: list):
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(max(0.2, min(0.98, float(score))), 4),
-        "rewards": [round(max(0.2, min(0.98, float(r))), 4) for r in rewards],
+        "score": round(max(0.2, min(0.95, float(score))), 4),
+        "rewards": [round(max(0.2, min(0.95, float(r))), 4) for r in rewards],
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -253,7 +253,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
 
     # Calculate final score: use final reward
     score = rewards[-1] if rewards else 0.0
-    score = max(0.2, min(0.98, float(score)))
+    score = max(0.2, min(0.95, float(score)))
     success = score >= 0.5
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -329,7 +329,7 @@ def main():
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)
-        avg_score = max(0.2, min(0.98, float(avg_score)))
+        avg_score = max(0.2, min(0.95, float(avg_score)))
         print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 
