@@ -13,23 +13,29 @@ from envs.data_cleaner.client import DataCleanerClient
 # Configuration from environment variables
 # The hackathon platform injects API_BASE_URL and API_KEY — we MUST use them.
 # ---------------------------------------------------------------------------
-# LLM proxy (MUST use platform-provided values)
-try:
-    API_BASE_URL = os.environ["API_BASE_URL"]
-except KeyError:
-    API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
+# LLM proxy (MUST use platform-provided values — NO fallbacks)
+API_BASE_URL = os.environ.get("API_BASE_URL", "").strip()
+API_KEY = os.environ.get("API_KEY", "").strip()
 
-try:
-    API_KEY = os.environ["API_KEY"]
-except KeyError:
-    API_KEY = os.getenv("HF_TOKEN", os.getenv("GROQ_API_KEY", ""))
+if not API_BASE_URL:
+    raise RuntimeError(
+        "API_BASE_URL environment variable is not set or empty. "
+        "The hackathon platform must inject this variable. "
+        "Do NOT hardcode or bypass the platform's LiteLLM proxy."
+    )
+if not API_KEY:
+    raise RuntimeError(
+        "API_KEY environment variable is not set or empty. "
+        "The hackathon platform must inject this variable. "
+        "Do NOT hardcode or use your own credentials."
+    )
 
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
-# Debug: show which API endpoint and (masked) key are in use
+# Debug: show which API endpoint is in use (mask key for safety)
 print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
-print(f"[DEBUG] API_KEY = {API_KEY[:8]}...{API_KEY[-4:]}" if len(API_KEY) > 12 else f"[DEBUG] API_KEY = (short/empty)", flush=True)
+print(f"[DEBUG] API_KEY present = True (len={len(API_KEY)})", flush=True)
 print(f"[DEBUG] MODEL_NAME = {MODEL_NAME}", flush=True)
 print(f"[DEBUG] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
@@ -147,14 +153,32 @@ def build_compact_state(obs, step_num: int) -> str:
 def call_llm(llm, model: str, messages: list) -> dict:
     for attempt in range(MAX_RETRIES):
         try:
-            completion = llm.chat.completions.create(
-                model=model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=256,
-            )
+            # Try with json_object response_format first; fall back without
+            # it if the proxy/model doesn't support structured output.
+            try:
+                completion = llm.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=256,
+                )
+            except Exception:
+                print("[DEBUG] response_format not supported, retrying without it", flush=True)
+                completion = llm.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=256,
+                )
             raw = (completion.choices[0].message.content or "").strip()
+            print(f"[DEBUG] LLM raw response (attempt {attempt+1}): {raw[:200]}", flush=True)
+            # Handle responses wrapped in markdown code blocks
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
             return json.loads(raw)
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
