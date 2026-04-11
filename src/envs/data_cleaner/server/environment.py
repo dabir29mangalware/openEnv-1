@@ -132,9 +132,10 @@ class DataCleanerEnvironment(Environment):
     # ------------------------------------------------------------------
 
     def _compute_similarity(self) -> float:
-        """Vectorized cell-level similarity between current df and perfect_df."""
+        """Vectorized cell-level similarity between current df and perfect_df.
+        Returns a value strictly between 0.0001 and 0.9999 (never exactly 0 or 1)."""
         if self.df is None or self.perfect_df is None:
-            return 0.0
+            return 0.5
 
         try:
             # Use views to avoid high memory usage
@@ -144,7 +145,7 @@ class DataCleanerEnvironment(Environment):
             # Match columns
             common_cols = sorted(set(current.columns) & set(perfect.columns))
             if not common_cols:
-                return 0.0
+                return 0.5
 
             # Match rows by id if possible
             if "id" in common_cols:
@@ -162,11 +163,11 @@ class DataCleanerEnvironment(Environment):
                 perfect = perfect.head(min_len).reset_index(drop=True)
 
             if current.empty or perfect.empty:
-                return 0.0
+                return 0.5
 
             total_cells = current.shape[0] * len(common_cols)
             if total_cells == 0:
-                return 0.0
+                return 0.5
 
             matching = 0
             for col in common_cols:
@@ -185,10 +186,12 @@ class DataCleanerEnvironment(Environment):
                     else:
                         matching += (s_curr[not_na].astype(str).str.strip().str.lower() == s_perf[not_na].astype(str).str.strip().str.lower()).sum()
 
-            return float(matching) / float(total_cells)
+            raw = float(matching) / float(total_cells)
+            # Strictly clamp: never return exactly 0.0 or 1.0
+            return max(0.0001, min(0.9999, raw))
 
         except Exception:
-            return 0.0
+            return 0.5
 
     # ------------------------------------------------------------------
     # Null cache (avoid recomputing every observation)
@@ -223,7 +226,7 @@ class DataCleanerEnvironment(Environment):
         return self._get_observation(
             f"Environment reset. Difficulty: {self.difficulty}. "
             f"Dataset has {len(self.df)} rows and {len(self.df.columns)} columns.",
-            0.0,
+            0.5,
         )
 
     def state(self) -> dict:
@@ -242,7 +245,8 @@ class DataCleanerEnvironment(Environment):
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
-        clamped_reward = max(0.2, min(0.98, float(reward)))
+        # Strict clamp: never 0.0 or 1.0
+        clamped_reward = max(0.0001, min(0.9999, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -280,7 +284,7 @@ class DataCleanerEnvironment(Environment):
 
     def step(self, action: DataCleanerAction) -> DataCleanerObservation:
         if self.done:
-            return self._get_observation("Episode is already finished.", 0.0)
+            return self._get_observation("Episode is already finished.", 0.5)
 
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         self._state.step_count += 1
@@ -333,7 +337,8 @@ class DataCleanerEnvironment(Environment):
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
             delta = new_sim - old_similarity
-            reward = round(max(delta, 0.0), 4)  # Only positive progress
+            # Clamp delta: minimum 0.0001 (not 0.0) so step is always observed
+            reward = round(max(delta, 0.0001), 4)
             self._last_similarity = new_sim
 
         self._state.total_reward += reward
@@ -344,8 +349,9 @@ class DataCleanerEnvironment(Environment):
     # ------------------------------------------------------------------
 
     def _do_submit(self, context_msg: str) -> DataCleanerObservation:
-        similarity = self._compute_similarity()
-        reward = round(similarity, 4)  # 0.0 – 1.0
+        similarity = self._compute_similarity()  # already clamped to (0.0001, 0.9999)
+        # Apply strict clamp again for safety
+        reward = round(max(0.0001, min(0.9999, similarity)), 4)
         self.done = True
         self._state.total_reward += reward
 
@@ -482,10 +488,11 @@ def _clamp_score(raw: float) -> float:
         s = float(raw)
     except (TypeError, ValueError):
         s = 0.5
-    if s <= 0.0 or s != s:  # handles 0.0 and NaN
-        return 0.2
-    if s >= 1.0:
-        return 0.98
+    if not (0.0 < s < 1.0) or s != s:  # handles out-of-range and NaN
+        if s <= 0.0 or s != s:
+            return 0.0001
+        if s >= 1.0:
+            return 0.9999
     return s
 
 
