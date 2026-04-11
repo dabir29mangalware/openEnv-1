@@ -119,7 +119,7 @@ uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 8000
 python test_heuristic.py
 
 # Run the LLM inference agent
-API_BASE_URL=http://localhost:8000 MODEL_NAME=llama-3.3-70b-versatile HF_TOKEN=<your-key> python inference.py
+ENV_BASE_URL=http://localhost:8000 API_BASE_URL=<proxy-url> API_KEY=<your-key> python inference.py
 ```
 
 ### Docker
@@ -139,10 +139,10 @@ The environment is deployed as a Docker Space. The `/health` endpoint responds t
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `API_BASE_URL` | Environment server URL | `http://localhost:8000` |
-| `MODEL_NAME` | LLM model identifier | `llama-3.3-70b-versatile` |
-| `HF_TOKEN` | API key for LLM provider | (required) |
-| `LLM_BASE_URL` | LLM API base URL | `https://api.groq.com/openai/v1` |
+| `ENV_BASE_URL` | Environment server URL | `http://localhost:8000` |
+| `API_BASE_URL` | LLM Proxy Base URL | (injected by platform) |
+| `API_KEY` | LLM Proxy API Key | (injected by platform) |
+| `MODEL_NAME` | LLM model identifier | `gpt-4o` |
 
 ---
 

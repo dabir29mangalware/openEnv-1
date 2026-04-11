@@ -13,33 +13,21 @@ from envs.data_cleaner.client import DataCleanerClient
 # Configuration from environment variables
 # The hackathon platform injects API_BASE_URL and API_KEY — we MUST use them.
 # ---------------------------------------------------------------------------
-# LLM proxy (Using literal os.environ as requested by validator)
+# OpenAI client initialization (Literal os.environ as requested by validator)
 try:
-    API_BASE_URL = os.environ["API_BASE_URL"].strip()
-    API_KEY = os.environ["API_KEY"].strip()
+    llm_base_url = os.environ["API_BASE_URL"]
+    llm_api_key = os.environ["API_KEY"]
 except KeyError as e:
     print(f"[ERROR] Required environment variable missing: {e}", flush=True)
-    print("The hackathon platform must inject API_BASE_URL and API_KEY.", flush=True)
-    # Fallback for local dev only if not on platform
-    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/v1")
-    API_KEY = os.getenv("API_KEY", "dummy-key")
-
-# URL Normalization: Ensure the base_url ends in /v1 for LiteLLM proxy compatibility
-if API_BASE_URL and not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
-    # If it's just a domain or doesn't have the version, append it
-    if API_BASE_URL.endswith("/"):
-        API_BASE_URL += "v1"
-    else:
-        API_BASE_URL += "/v1"
+    # Fallback ONLY for local development; validator will provide these.
+    llm_base_url = os.getenv("API_BASE_URL", "http://localhost:8000/v1")
+    llm_api_key = os.getenv("API_KEY", "dummy-key")
 
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
-# Debug: show which API endpoint is in use (mask key for safety)
-print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
-print(f"[DEBUG] API_KEY present = True (len={len(API_KEY)})", flush=True)
-print(f"[DEBUG] MODEL_NAME = {MODEL_NAME}", flush=True)
-print(f"[DEBUG] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
+# Debug: show state
+print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
 
 # Inference parameters
 MAX_HISTORY_PAIRS = 6  # Sliding window: keep last N user/assistant pairs
@@ -155,24 +143,14 @@ def build_compact_state(obs, step_num: int) -> str:
 def call_llm(llm, model: str, messages: list) -> dict:
     for attempt in range(MAX_RETRIES):
         try:
-            # Try with json_object response_format first; fall back without
-            # it if the proxy/model doesn't support structured output.
-            try:
-                completion = llm.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.1,
-                    max_tokens=256,
-                )
-            except Exception:
-                print("[DEBUG] response_format not supported, retrying without it", flush=True)
-                completion = llm.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=0.1,
-                    max_tokens=256,
-                )
+            # Removed response_format={"type": "json_object"} for maximum proxy compatibility.
+            # Many LiteLLM-wrapped Llama/Mistral models will reject this header.
+            completion = llm.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=256,
+            )
             raw = (completion.choices[0].message.content or "").strip()
             print(f"[DEBUG] LLM raw response (attempt {attempt+1}): {raw[:200]}", flush=True)
             # Handle responses wrapped in markdown code blocks
@@ -270,10 +248,10 @@ def main():
 
     client = DataCleanerClient(base_url=ENV_BASE_URL)
 
-    # Wait for the environment server to be ready (up to 60s)
+    # Wait for the environment server to be ready (up to 120s for high reliability)
     print(f"[DEBUG] Waiting for environment server at {ENV_BASE_URL}...", flush=True)
     server_ready = False
-    for attempt in range(20):
+    for attempt in range(30):
         try:
             if client.health():
                 print(f"[DEBUG] Server healthy after {attempt + 1} attempts.", flush=True)
@@ -281,17 +259,19 @@ def main():
                 break
         except Exception:
             pass
-        time.sleep(3)
+        time.sleep(4)
     
     if not server_ready:
-        print(f"[WARN] Server not healthy at {ENV_BASE_URL} after 60s, proceeding anyway...", flush=True)
+        print(f"[WARN] Server not healthy at {ENV_BASE_URL} after 120s, proceeding anyway...", flush=True)
 
-    # Initialize OpenAI client with literal platform variables
+    # Initialize OpenAI client with literal platform variables as requested.
+    # The validator requires literal use of base_url=os.environ["API_BASE_URL"]
+    # and api_key=os.environ["API_KEY"].
     llm = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=API_KEY,
+        base_url=os.environ["API_BASE_URL"],
+        api_key=os.environ["API_KEY"],
     )
-    print(f"[DEBUG] OpenAI client initialized with base_url={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] OpenAI client initialized via os.environ literals", flush=True)
 
     all_scores = []
 
