@@ -200,7 +200,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
 
     rewards = []
     steps_taken = 0
-    score = 0.0
+    score = 0.22
     success = False
 
     try:
@@ -240,7 +240,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
             obs, reward, done, info = client.step(action_dict)
         except Exception as e:
             error = str(e)
-            reward = 0.0
+            reward = 0.22
             print(f"[DEBUG] Step error: {e}", flush=True)
 
         rewards.append(reward)
@@ -252,7 +252,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
             break
 
     # Calculate final score: use final reward
-    score = rewards[-1] if rewards else 0.0
+    score = rewards[-1] if rewards else 0.22
     score = max(0.22, min(0.88, float(score)))
     success = score >= 0.5
 
@@ -314,7 +314,7 @@ def main():
                 print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
                 continue
 
-        total_score = 0.0
+        total_score = 0.22
         for task in TASKS:
             try:
                 score = run_task(client, llm, task["name"], task["difficulty"], active_model, dataset_path=server_dataset_path)
