@@ -31,7 +31,7 @@ if not API_KEY:
     )
 
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
 # Debug: show which API endpoint is in use (mask key for safety)
 print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)

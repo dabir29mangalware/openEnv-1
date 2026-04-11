@@ -17,5 +17,5 @@ tasks:
     difficulty: hard
     grader: src.envs.data_cleaner.server.environment.grade_data_cleaning_hard
 commands:
-  start: "uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 8000"
+  start: "uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 7860"
   inference: "python inference.py"

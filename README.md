@@ -4,6 +4,7 @@ emoji: 🧹
 colorFrom: blue
 colorTo: green
 sdk: docker
+app_port: 7860
 pinned: false
 ---
 
@@ -112,20 +113,20 @@ This ensures the agent receives continuous feedback, not just a binary end-of-ep
 pip install openenv-core pandas numpy fastapi uvicorn requests pydantic openai
 
 # Start the server
-uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 8000
+uvicorn src.envs.data_cleaner.server.app:app --host 0.0.0.0 --port 7860
 
 # Run the heuristic test
 python test_heuristic.py
 
 # Run the LLM inference agent
-API_BASE_URL=http://localhost:8000 MODEL_NAME=llama-3.3-70b-versatile HF_TOKEN=<your-key> python inference.py
+API_BASE_URL=http://localhost:7860 MODEL_NAME=llama-3.3-70b-versatile HF_TOKEN=<your-key> python inference.py
 ```
 
 ### Docker
 
 ```bash
 docker build -t data-cleaner .
-docker run -p 8000:8000 data-cleaner
+docker run -p 7860:7860 data-cleaner
 ```
 
 ### Hugging Face Spaces
@@ -138,7 +139,7 @@ The environment is deployed as a Docker Space. The `/health` endpoint responds t
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `API_BASE_URL` | Environment server URL | `http://localhost:8000` |
+| `API_BASE_URL` | Environment server URL | `http://localhost:7860` |
 | `MODEL_NAME` | LLM model identifier | `llama-3.3-70b-versatile` |
 | `HF_TOKEN` | API key for LLM provider | (required) |
 | `LLM_BASE_URL` | LLM API base URL | `https://api.groq.com/openai/v1` |
