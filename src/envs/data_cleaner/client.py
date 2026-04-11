@@ -40,7 +40,16 @@ class DataCleanerClient(HTTPEnvClient):
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return DataCleanerObservation(**response.json())
+        data = response.json()
+        
+        # Handle wrapped format (standard OpenEnv server format)
+        if "observation" in data:
+            obs_data = data["observation"]
+            obs_data["reward"] = data.get("reward", 0.5)
+            obs_data["done"] = data.get("done", False)
+            return DataCleanerObservation(**obs_data)
+        
+        return DataCleanerObservation(**data)
 
     def upload(self, file_path: str) -> str:
         with open(file_path, "rb") as f:
