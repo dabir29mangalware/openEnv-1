@@ -11,50 +11,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src"
 from envs.data_cleaner.client import DataCleanerClient
 
 # ---------------------------------------------------------------------------
-# Configuration from environment variables
-# The hackathon platform injects API_BASE_URL and API_KEY — we MUST use them.
+# OpenAI client initialization (Literal platform compliance)
 # ---------------------------------------------------------------------------
-# OpenAI client initialization (Literal os.environ as requested by validator)
-try:
-    # Use literal access as requested by validator instructions
-    llm_base_url = os.environ["API_BASE_URL"].rstrip("/")
-    llm_api_key = os.environ["API_KEY"]
-except KeyError as e:
-    print(f"[DIAGNOSTIC] Required environment variable missing: {e}", flush=True)
-    # Fallback ONLY for local development; validator will provide these.
-    llm_base_url = os.getenv("API_BASE_URL", "http://localhost:8000/v1").rstrip("/")
-    llm_api_key = os.getenv("API_KEY", "dummy-key")
-
-# URL Normalization for Proxy
-if llm_base_url and not llm_base_url.startswith("http"):
-    llm_base_url = "http://" + llm_base_url
-
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
-print(f"[DIAGNOSTIC] API_BASE_URL: {llm_base_url}", flush=True)
-print(f"[DIAGNOSTIC] ENV_BASE_URL: {ENV_BASE_URL}", flush=True)
-
-# Pre-flight Diagnostic: Verify connectivity before starting
-def diagnostic_check():
-    print(f"\n[DIAGNOSTIC] --- PRE-FLIGHT CHECK ---", flush=True)
-    # Check Environment Server
-    try:
-        r = requests.get(f"{ENV_BASE_URL}/health", timeout=5)
-        print(f"[DIAGNOSTIC] Environment Server Ping: {r.status_code} {r.text}", flush=True)
-    except Exception as e:
-        print(f"[DIAGNOSTIC] Environment Server Ping FAILED: {e}", flush=True)
-
-    # Check LLM Proxy (Manual Request)
-    try:
-        # LiteLLM proxies often respond to a simple GET on the base URL or have a /health
-        r = requests.get(llm_base_url.rstrip("/v1"), timeout=5)
-        print(f"[DIAGNOSTIC] LLM Proxy Ping: {r.status_code}", flush=True)
-    except Exception as e:
-        print(f"[DIAGNOSTIC] LLM Proxy Ping FAILED (this might be okay if it ignores GET): {e}", flush=True)
-    print(f"[DIAGNOSTIC] ------------------------\n", flush=True)
-
-diagnostic_check()
+# Debug: show state
+print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
 
 # Debug: show state
 print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
@@ -298,12 +261,12 @@ def main():
 
     # Initialize OpenAI client with literal platform variables as requested.
     # The validator requires literal use of base_url=os.environ["API_BASE_URL"]
-    # and api_key=os.environ["API_KEY"], which we have validated in the diagnostic block.
+    # and api_key=os.environ["API_KEY"].
     llm = OpenAI(
-        base_url=llm_base_url,
-        api_key=llm_api_key,
+        base_url=os.environ["API_BASE_URL"],
+        api_key=os.environ["API_KEY"],
     )
-    print(f"[DEBUG] OpenAI client initialized with {llm_base_url}", flush=True)
+    print(f"[DEBUG] OpenAI client initialized with {os.environ.get('API_BASE_URL')}", flush=True)
 
     all_scores = []
 
