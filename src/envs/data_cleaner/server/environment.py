@@ -133,7 +133,7 @@ class DataCleanerEnvironment(Environment):
 
     def _compute_similarity(self) -> float:
         """Vectorized cell-level similarity between current df and perfect_df.
-        Returns a value strictly between 0.0001 and 0.9999 (never exactly 0 or 1)."""
+        Returns a value strictly between 0.0002 and 0.9998 (never exactly 0 or 1)."""
         if self.df is None or self.perfect_df is None:
             return 0.5
 
@@ -188,7 +188,7 @@ class DataCleanerEnvironment(Environment):
 
             raw = float(matching) / float(total_cells)
             # Strictly clamp: never return exactly 0.0 or 1.0
-            return max(0.0001, min(0.9999, raw))
+            return max(0.0002, min(0.9998, raw))
 
         except Exception:
             return 0.5
@@ -235,7 +235,7 @@ class DataCleanerEnvironment(Environment):
             return {
                 "episode_id": "",
                 "step_count": 0,
-                "total_reward": 0.0001,
+                "total_reward": 0.0002,
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
@@ -337,7 +337,7 @@ class DataCleanerEnvironment(Environment):
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
             delta = new_sim - old_similarity
-            reward = round(max(0.0001, min(0.9499, delta)), 4) if delta > 0 else 0.2001
+            reward = round(max(0.0002, min(0.9498, delta)), 4) if delta > 0 else 0.2001
             self._last_similarity = new_sim
 
         self._state.total_reward += reward
@@ -348,7 +348,7 @@ class DataCleanerEnvironment(Environment):
     # ------------------------------------------------------------------
 
     def _do_submit(self, context_msg: str) -> DataCleanerObservation:
-        similarity = self._compute_similarity()  # already clamped to (0.0001, 0.9999)
+        similarity = self._compute_similarity()  # already clamped to (0.0002, 0.9998)
         # Apply strict clamp again for safety
         reward = round(max(0.2, min(0.95, similarity)), 4)
         self.done = True
