@@ -16,8 +16,13 @@ from envs.data_cleaner.client import DataCleanerClient
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
-# Debug: show state
-print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
+# Strict check for platform variables
+if not os.environ.get("API_BASE_URL"):
+    print("[FATAL] API_BASE_URL environment variable is MISSING or EMPTY.", flush=True)
+    sys.exit(1)
+if not os.environ.get("API_KEY"):
+    print("[FATAL] API_KEY environment variable is MISSING or EMPTY.", flush=True)
+    sys.exit(1)
 
 # Debug: show state
 print(f"[DEBUG] Model: {MODEL_NAME} | Env: {ENV_BASE_URL}", flush=True)
@@ -179,9 +184,10 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, da
     try:
         obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
-        print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
-        log_end(success=False, steps=0, score=0.2, rewards=[])
-        return 0.2
+        print(f"[FATAL] Failed to connect to environment server at {ENV_BASE_URL}: {e}", flush=True)
+        # CRITICAL: Do NOT return a default score. Raise an error to fail the run.
+        # This prevents the platform from observing a "successful" run with zero agent calls.
+        raise RuntimeError(f"Environment Connection Failure: {e}")
 
     # Message history with sliding window
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -243,10 +249,10 @@ def main():
 
     client = DataCleanerClient(base_url=ENV_BASE_URL)
 
-    # Wait for the environment server to be ready (up to 120s for high reliability)
+    # Wait for the environment server to be ready (up to 300s for absolute reliability)
     print(f"[DEBUG] Waiting for environment server at {ENV_BASE_URL}...", flush=True)
     server_ready = False
-    for attempt in range(30):
+    for attempt in range(60): # 60 * 5s = 300s
         try:
             if client.health():
                 print(f"[DEBUG] Server healthy after {attempt + 1} attempts.", flush=True)
@@ -254,10 +260,11 @@ def main():
                 break
         except Exception:
             pass
-        time.sleep(4)
+        time.sleep(5)
     
     if not server_ready:
-        print(f"[WARN] Server not healthy at {ENV_BASE_URL} after 120s, proceeding anyway...", flush=True)
+        print(f"[FATAL] Server not healthy at {ENV_BASE_URL} after 300s. Exiting.", flush=True)
+        sys.exit(1)
 
     # Initialize OpenAI client with literal platform variables as requested.
     # The validator requires literal use of base_url=os.environ["API_BASE_URL"]
