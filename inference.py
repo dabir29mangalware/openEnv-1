@@ -16,7 +16,6 @@ from envs.data_cleaner.client import DataCleanerClient
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
-# Strict check for platform variables
 if not os.environ.get("API_BASE_URL"):
     print("[FATAL] API_BASE_URL environment variable is MISSING or EMPTY.", flush=True)
     sys.exit(1)
@@ -24,22 +23,36 @@ if not os.environ.get("API_KEY"):
     print("[FATAL] API_KEY environment variable is MISSING or EMPTY.", flush=True)
     sys.exit(1)
 
+api_base_url = os.environ["API_BASE_URL"]
+if not api_base_url.startswith("http://") and not api_base_url.startswith("https://"):
+    api_base_url = "http://" + api_base_url
+
+if not api_base_url.endswith("/v1") and not api_base_url.endswith("/v1/"):
+    api_base_url = api_base_url.rstrip("/") + "/v1"
+os.environ["API_BASE_URL_V1"] = api_base_url
+
 print(f"[DEBUG] API_BASE_URL = {os.environ['API_BASE_URL']}", flush=True)
 print(f"[DEBUG] MODEL_NAME = {MODEL_NAME} | ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 
 def discover_model(llm_client, preferred_model: str) -> str:
     """Try to discover the correct model name from the proxy's /models endpoint."""
+    if preferred_model:
+        # Many proxies don't support /models, so just return the requested MODEL_NAME if present
+        return preferred_model
+    
+    url = f"{os.environ['API_BASE_URL_V1'].rstrip('/')}/models"
+    headers = {"Authorization": f"Bearer {os.environ['API_KEY']}"}
     try:
-        models = llm_client.models.list()
-        available = [m.id for m in models.data]
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        available = [m["id"] for m in data.get("data", [])]
         print(f"[DEBUG] Available models on proxy: {available}", flush=True)
-        # Use preferred if available, otherwise first available
-        if preferred_model in available:
-            return preferred_model
+        # Use first available
         if available:
             chosen = available[0]
-            print(f"[DEBUG] Preferred model '{preferred_model}' not found, using '{chosen}'", flush=True)
+            print(f"[DEBUG] Returning model '{chosen}' from proxy list", flush=True)
             return chosen
     except Exception as e:
         print(f"[DEBUG] Could not list models from proxy: {e}. Using '{preferred_model}'.", flush=True)
@@ -70,7 +83,7 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
     payload = {
         "step": step,
         "action": action,
-        "reward": round(max(0.22, min(0.88, float(reward))), 4),
+        "reward": round(max(0.2222, min(0.8888, float(reward))), 4),
         "done": done,
         "error": str(error) if error else None,
     }
@@ -81,8 +94,8 @@ def log_end(success: bool, steps: int, score: float, rewards: list):
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(max(0.22, min(0.88, float(score))), 4),
-        "rewards": [round(max(0.22, min(0.88, float(r))), 4) for r in rewards],
+        "score": round(max(0.2222, min(0.8888, float(score))), 4),
+        "rewards": [round(max(0.2222, min(0.8888, float(r))), 4) for r in rewards],
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -156,17 +169,29 @@ def build_compact_state(obs, step_num: int) -> str:
 # LLM call with retry
 # ---------------------------------------------------------------------------
 def call_llm(llm, model: str, messages: list) -> dict:
+    url = f"{os.environ['API_BASE_URL_V1'].rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {os.environ['API_KEY']}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": 256
+    }
+    
     for attempt in range(MAX_RETRIES):
         try:
-            # Removed response_format={"type": "json_object"} for maximum proxy compatibility.
-            # Many LiteLLM-wrapped Llama/Mistral models will reject this header.
-            completion = llm.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=256,
-            )
-            raw = (completion.choices[0].message.content or "").strip()
+            resp = requests.post(url, headers=headers, json=payload, timeout=45)
+            resp.raise_for_status()
+            
+            # The proxy should return an OpenAI-compatible JSON response
+            raw = resp.json()["choices"][0]["message"]["content"]
+            if not raw:
+                raw = ""
+            raw = raw.strip()
+
             print(f"[DEBUG] LLM raw response (attempt {attempt+1}): {raw[:200]}", flush=True)
             # Handle responses wrapped in markdown code blocks
             if raw.startswith("```"):
@@ -174,11 +199,14 @@ def call_llm(llm, model: str, messages: list) -> dict:
                 if raw.startswith("json"):
                     raw = raw[4:]
                 raw = raw.strip()
+                
             return json.loads(raw)
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
             print(f"[ERROR] LLM call attempt {attempt+1} failed: {e}", flush=True)
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"[ERROR] Proxy response: {e.response.text}", flush=True)
             print(f"[ERROR] Traceback:\n{tb}", flush=True)
             if attempt < MAX_RETRIES - 1:
                 wait = RETRY_BACKOFF[attempt]
@@ -200,15 +228,15 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
 
     rewards = []
     steps_taken = 0
-    score = 0.22
+    score = 0.2222
     success = False
 
     try:
         obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
     except Exception as e:
         print(f"[WARN] Failed to connect to environment server at {ENV_BASE_URL}: {e}", flush=True)
-        log_end(success=False, steps=0, score=0.2, rewards=[])
-        return 0.2
+        log_end(success=False, steps=0, score=0.2222, rewards=[])
+        return 0.2222
 
     # Message history with sliding window
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -236,24 +264,27 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
 
         # Execute action
         error = None
+        current_done = obs.done
         try:
-            obs, reward, done, info = client.step(action_dict)
+            obs, reward, current_done, info = client.step(action_dict)
         except Exception as e:
             error = str(e)
-            reward = 0.22
+            reward = 0.2222
+            current_done = True
+            obs.done = True
             print(f"[DEBUG] Step error: {e}", flush=True)
 
         rewards.append(reward)
         steps_taken = step
 
-        log_step(step=step, action=action_dict, reward=reward, done=obs.done, error=error)
+        log_step(step=step, action=action_dict, reward=reward, done=current_done, error=error)
 
-        if obs.done:
+        if current_done:
             break
 
     # Calculate final score: use final reward
-    score = rewards[-1] if rewards else 0.22
-    score = max(0.22, min(0.88, float(score)))
+    score = rewards[-1] if rewards else 0.2222
+    score = max(0.2222, min(0.8888, float(score)))
     success = score >= 0.5
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -287,12 +318,11 @@ def main():
         print(f"[FATAL] Server not healthy at {ENV_BASE_URL} after 300s. Exiting.", flush=True)
         sys.exit(1)
 
-    # Initialize OpenAI client with literal platform variables as requested.
     llm = OpenAI(
-        base_url=os.environ["API_BASE_URL"],
+        base_url=os.environ["API_BASE_URL_V1"],
         api_key=os.environ["API_KEY"],
     )
-    print(f"[DEBUG] OpenAI client initialized with base_url={os.environ['API_BASE_URL']}", flush=True)
+    print(f"[DEBUG] OpenAI client initialized with base_url={os.environ['API_BASE_URL_V1']}", flush=True)
 
     # Discover the correct model name from the proxy
     active_model = discover_model(llm, MODEL_NAME)
@@ -314,7 +344,7 @@ def main():
                 print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
                 continue
 
-        total_score = 0.22
+        total_score = 0.2222
         for task in TASKS:
             try:
                 score = run_task(client, llm, task["name"], task["difficulty"], active_model, dataset_path=server_dataset_path)
@@ -322,14 +352,14 @@ def main():
                 import traceback
                 print(f"[ERROR] Task '{task['name']}' failed with exception: {e}", flush=True)
                 print(traceback.format_exc(), flush=True)
-                score = 0.2
+                score = 0.2222
             total_score += score
             all_scores.append(score)
             print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['name']}' score: {score:.4f}", flush=True)
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)
-        avg_score = max(0.22, min(0.88, float(avg_score)))
+        avg_score = max(0.2222, min(0.8888, float(avg_score)))
         print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 

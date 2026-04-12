@@ -239,14 +239,14 @@ class DataCleanerEnvironment(Environment):
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
-        state_dict["total_reward"] = max(0.22, min(0.88, float(state_dict["total_reward"])))
+        state_dict["total_reward"] = max(0.2222, min(0.8888, float(state_dict["total_reward"])))
         return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
         # Strict clamp: never 0.0 or 1.0, keep within (0.22, 0.88)
-        clamped_reward = max(0.22, min(0.88, float(reward)))
+        clamped_reward = max(0.2222, min(0.8888, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -295,7 +295,7 @@ class DataCleanerEnvironment(Environment):
                 f"Step limit ({max_steps}) exceeded. Auto-submitting dataset."
             )
 
-        reward = 0.2222
+        reward = 0.0  # Initialized to 0.0 to trigger similarity delta check below if not set by actions
         feedback = ""
 
         old_similarity = self._last_similarity
@@ -337,7 +337,7 @@ class DataCleanerEnvironment(Environment):
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
             delta = new_sim - old_similarity
-            reward = round(max(0.2222, min(0.8887, delta)), 4) if delta > 0 else 0.2222
+            reward = round(max(0.2222, min(0.8888, delta)), 4) if delta > 0 else 0.2222
             self._last_similarity = new_sim
 
         self._state.total_reward += reward
@@ -349,7 +349,7 @@ class DataCleanerEnvironment(Environment):
 
     def _do_submit(self, context_msg: str) -> DataCleanerObservation:
         similarity = self._compute_similarity()
-        reward = round(max(0.22, min(0.88, similarity)), 4)
+        reward = round(max(0.2222, min(0.8888, similarity)), 4)
         self.done = True
         self._state.total_reward += reward
 
@@ -470,12 +470,12 @@ class DataCleanerEnvironment(Environment):
 # Standalone Task Graders
 # ------------------------------------------------------------------
 def _clamp_score(raw: float) -> float:
-    """Clamp a raw score strictly into (0.22, 0.88) as advised."""
+    """Clamp a raw score strictly into (0.2222, 0.8888) as advised."""
     try:
         s = float(raw)
     except (TypeError, ValueError):
         s = 0.5
-    return max(0.22, min(0.88, s))
+    return max(0.2222, min(0.8888, s))
 
 
 def grade_data_cleaning_easy(*args, **kwargs) -> float:

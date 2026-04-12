@@ -72,7 +72,10 @@ class DataCleanerClient(HTTPEnvClient):
         
         # Handle backward-compatibility for different response formats
         if "observation" in data:
-            obs = DataCleanerObservation(**data["observation"])
+            obs_data = data["observation"]
+            obs_data["reward"] = data.get("reward", 0.5)
+            obs_data["done"] = data.get("done", False)
+            obs = DataCleanerObservation(**obs_data)
             # Reward can be flat float or dict {"value": float}
             raw_reward = data["reward"]
             if isinstance(raw_reward, dict):
