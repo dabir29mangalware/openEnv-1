@@ -14,7 +14,7 @@ from envs.data_cleaner.client import DataCleanerClient
 # OpenAI client initialization (Literal platform compliance)
 # ---------------------------------------------------------------------------
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000").rstrip("/")
 
 if not os.environ.get("API_BASE_URL"):
     print("[FATAL] API_BASE_URL environment variable is MISSING or EMPTY.", flush=True)
@@ -63,9 +63,9 @@ MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]  # seconds
 
 TASKS = [
-    {"difficulty": "easy", "name": "data_cleaning_easy"},
-    {"difficulty": "medium", "name": "data_cleaning_medium"},
-    {"difficulty": "hard", "name": "data_cleaning_hard"},
+    {"difficulty": "easy", "task_id": "data_cleaning_easy"},
+    {"difficulty": "medium", "task_id": "data_cleaning_medium"},
+    {"difficulty": "hard", "task_id": "data_cleaning_hard"},
 ]
 
 BENCHMARK = "data_cleaner"
@@ -274,6 +274,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
             obs.done = True
             print(f"[DEBUG] Step error: {e}", flush=True)
 
+        reward = max(0.2222, min(0.8888, float(reward)))
         rewards.append(reward)
         steps_taken = step
 
@@ -286,8 +287,10 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
     score = rewards[-1] if rewards else 0.2222
     score = max(0.2222, min(0.8888, float(score)))
     success = score >= 0.5
-
+    
+    # ALWAYS emit [END] log
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
     return score
 
 
@@ -299,14 +302,14 @@ def main():
     parser.add_argument("--datasets", nargs="+", type=str, help="One or more paths to local CSV datasets to upload and clean", default=[None])
     args = parser.parse_args()
 
-    client = DataCleanerClient(base_url=ENV_BASE_URL)
+    env_client = DataCleanerClient(base_url=ENV_BASE_URL)
 
     # Wait for the environment server to be ready (up to 300s for absolute reliability)
     print(f"[DEBUG] Waiting for environment server at {ENV_BASE_URL}...", flush=True)
     server_ready = False
     for attempt in range(60): # 60 * 5s = 300s
         try:
-            if client.health():
+            if env_client.health():
                 print(f"[DEBUG] Server healthy after {attempt + 1} attempts.", flush=True)
                 server_ready = True
                 break
@@ -339,7 +342,7 @@ def main():
                 continue
             try:
                 print(f"\n{'='*50}\n[DEBUG] Uploading {dataset} to environment server...\n{'='*50}", flush=True)
-                server_dataset_path = client.upload(dataset)
+                server_dataset_path = env_client.upload(dataset)
             except Exception as e:
                 print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
                 continue
@@ -347,15 +350,16 @@ def main():
         total_score = 0.2222
         for task in TASKS:
             try:
-                score = run_task(client, llm, task["name"], task["difficulty"], active_model, dataset_path=server_dataset_path)
+                score = run_task(env_client, llm, task["task_id"] if "task_id" in task else task["name"], task["difficulty"], active_model, dataset_path=server_dataset_path)
             except Exception as e:
                 import traceback
-                print(f"[ERROR] Task '{task['name']}' failed with exception: {e}", flush=True)
+                print(f"[ERROR] Task failed with exception: {e}", flush=True)
                 print(traceback.format_exc(), flush=True)
                 score = 0.2222
+            score = max(0.2222, min(0.8888, float(score)))
             total_score += score
             all_scores.append(score)
-            print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['name']}' score: {score:.4f}", flush=True)
+            print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['task_id']}' score: {score:.4f}", flush=True)
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)

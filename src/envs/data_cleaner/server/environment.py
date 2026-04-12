@@ -295,7 +295,7 @@ class DataCleanerEnvironment(Environment):
                 f"Step limit ({max_steps}) exceeded. Auto-submitting dataset."
             )
 
-        reward = 0.0  # Initialized to 0.0 to trigger similarity delta check below if not set by actions
+        reward = 0.2222  # Initialized to base value
         feedback = ""
 
         old_similarity = self._last_similarity
@@ -332,14 +332,15 @@ class DataCleanerEnvironment(Environment):
             feedback = f"Action generated an error: {str(e)}"
             reward = 0.2222
 
-        # Compute delta reward from similarity improvement
-        if reward == 0.0 and feedback:
+        if reward == 0.001 and feedback:
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
+            delta = new_sim - old_similarity
             delta = new_sim - old_similarity
             reward = round(max(0.2222, min(0.8888, delta)), 4) if delta > 0 else 0.2222
             self._last_similarity = new_sim
 
+        reward = max(0.001, min(0.999, float(reward)))
         self._state.total_reward += reward
         return self._get_observation(feedback, reward)
 
@@ -367,6 +368,16 @@ class DataCleanerEnvironment(Environment):
     # ------------------------------------------------------------------
 
     def _action_drop_column(self, col: Optional[str]) -> Tuple[str, float]:
+        if col is None or col not in self.df.columns:
+            return f"Column '{col}' not found.", 0.2222
+
+        if self.df[col].isnull().all():
+            self.df = self.df.drop(columns=[col])
+            self._invalidate_cache()
+            return f"Successfully dropped empty column: {col}", 0.2222
+        else:
+            self.df = self.df.drop(columns=[col])
+            self._invalidate_cache()
             return f"Dropped non-empty column: {col} (penalty applied)", 0.2222
 
     def _action_remove_duplicates(self) -> Tuple[str, float]:
