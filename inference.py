@@ -90,11 +90,13 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
 
 
 def log_end(success: bool, steps: int, score: float, rewards: list):
+    score = max(0.001, min(0.999, float(score)))
+    rewards_payload = [round(max(0.2222, min(0.8888, float(r))), 4) for r in rewards]
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(max(0.2222, min(0.8888, float(score))), 4),
-        "rewards": [round(max(0.2222, min(0.8888, float(r))), 4) for r in rewards],
+        "score": float(f"{score:.3f}"),
+        "rewards": rewards_payload,
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -282,9 +284,12 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
         if current_done:
             break
 
-    # Calculate final score: use final reward
-    score = rewards[-1] if rewards else 0.2222
-    score = max(0.2222, min(0.8888, float(score)))
+    # Calculate final score from environment grader metadata with strict (0,1) clamping
+    metadata = obs.get("metadata", {}) if isinstance(obs, dict) else (getattr(obs, "metadata", None) or {})
+    raw_score = metadata.get("grader_score", 0.0)
+    if raw_score is None:
+        raw_score = 0.0
+    score = max(0.001, min(0.999, float(raw_score)))
     success = score >= 0.5
     
     # ALWAYS emit [END] log
@@ -354,8 +359,8 @@ def main():
                 import traceback
                 print(f"[ERROR] Task failed with exception: {e}", flush=True)
                 print(traceback.format_exc(), flush=True)
-                score = 0.2222
-            score = max(0.2222, min(0.8888, float(score)))
+                score = 0.001
+            score = max(0.001, min(0.999, float(score)))
             total_score += score
             all_scores.append(score)
             print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['task_id']}' score: {score:.4f}", flush=True)
