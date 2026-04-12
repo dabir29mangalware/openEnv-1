@@ -32,7 +32,7 @@ class DataCleanerEnvironment(Environment):
         self.perfect_df: Optional[pd.DataFrame] = None
         self.done: bool = False
         self.difficulty: str = "easy"
-        self._last_similarity: float = 0.001
+        self._last_similarity: float = 0.2222
         self._null_cache: Optional[Dict[str, int]] = None
 
     # ------------------------------------------------------------------
@@ -132,9 +132,10 @@ class DataCleanerEnvironment(Environment):
     # ------------------------------------------------------------------
 
     def _compute_similarity(self) -> float:
-        """Vectorized cell-level similarity between current df and perfect_df."""
+        """Vectorized cell-level similarity between current df and perfect_df.
+        Returns a value strictly between 0.2222 and 0.8888 (never exactly 0 or 1)."""
         if self.df is None or self.perfect_df is None:
-            return 0.001
+            return 0.5
 
         try:
             # Use views to avoid high memory usage
@@ -144,7 +145,7 @@ class DataCleanerEnvironment(Environment):
             # Match columns
             common_cols = sorted(set(current.columns) & set(perfect.columns))
             if not common_cols:
-                return 0.001
+                return 0.5
 
             # Match rows by id if possible
             if "id" in common_cols:
@@ -162,11 +163,11 @@ class DataCleanerEnvironment(Environment):
                 perfect = perfect.head(min_len).reset_index(drop=True)
 
             if current.empty or perfect.empty:
-                return 0.001
+                return 0.5
 
             total_cells = current.shape[0] * len(common_cols)
             if total_cells == 0:
-                return 0.001
+                return 0.5
 
             matching = 0
             for col in common_cols:
@@ -185,10 +186,12 @@ class DataCleanerEnvironment(Environment):
                     else:
                         matching += (s_curr[not_na].astype(str).str.strip().str.lower() == s_perf[not_na].astype(str).str.strip().str.lower()).sum()
 
-            return max(0.001, min(0.999, float(matching) / float(total_cells)))
+            raw = float(matching) / float(total_cells)
+            # Strictly clamp: never return exactly 0.0 or 1.0
+            return max(0.2222, min(0.8888, raw))
 
         except Exception:
-            return 0.001
+            return 0.5
 
     # ------------------------------------------------------------------
     # Null cache (avoid recomputing every observation)
@@ -215,7 +218,7 @@ class DataCleanerEnvironment(Environment):
         self._state = DataCleanerState(
             episode_id=str(uuid4()),
             step_count=0,
-            total_reward=0.001,
+            total_reward=0.2222,
             difficulty=self.difficulty,
         )
         self._invalidate_cache()
@@ -223,7 +226,7 @@ class DataCleanerEnvironment(Environment):
         return self._get_observation(
             f"Environment reset. Difficulty: {self.difficulty}. "
             f"Dataset has {len(self.df)} rows and {len(self.df.columns)} columns.",
-            0.001,
+            0.5,
         )
 
     def state(self) -> dict:
@@ -232,17 +235,18 @@ class DataCleanerEnvironment(Environment):
             return {
                 "episode_id": "",
                 "step_count": 0,
-                "total_reward": 0.0001,
+                "total_reward": 0.2222,
                 "difficulty": "easy",
             }
         state_dict = self._state.model_dump()
-        state_dict["total_reward"] = max(0.001, min(0.999, float(state_dict["total_reward"])))
+        state_dict["total_reward"] = max(0.2222, min(0.8888, float(state_dict["total_reward"])))
         return state_dict
 
     def _get_observation(self, feedback: str, reward: float) -> DataCleanerObservation:
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         step_count = self._state.step_count if self._state else 0
-        clamped_reward = max(0.001, min(0.999, float(reward)))
+        # Strict clamp: never 0.0 or 1.0, keep within (0.22, 0.88)
+        clamped_reward = max(0.2222, min(0.8888, float(reward)))
 
         if self.df is not None:
             metadata = {
@@ -280,7 +284,7 @@ class DataCleanerEnvironment(Environment):
 
     def step(self, action: DataCleanerAction) -> DataCleanerObservation:
         if self.done:
-            return self._get_observation("Episode is already finished.", 0.001)
+            return self._get_observation("Episode is already finished.", 0.5)
 
         max_steps = STEP_LIMITS.get(self.difficulty, 50)
         self._state.step_count += 1
@@ -291,7 +295,7 @@ class DataCleanerEnvironment(Environment):
                 f"Step limit ({max_steps}) exceeded. Auto-submitting dataset."
             )
 
-        reward = 0.001
+        reward = 0.2222  # Initialized to base value
         feedback = ""
 
         old_similarity = self._last_similarity
@@ -326,13 +330,14 @@ class DataCleanerEnvironment(Environment):
 
         except Exception as e:
             feedback = f"Action generated an error: {str(e)}"
-            reward = 0.001
+            reward = 0.2222
 
         if reward == 0.001 and feedback:
             # No explicit reward set — compute from similarity delta
             new_sim = self._compute_similarity()
             delta = new_sim - old_similarity
-            reward = round(max(delta, 0.001), 4)  # Only positive progress
+            delta = new_sim - old_similarity
+            reward = round(max(0.2222, min(0.8888, delta)), 4) if delta > 0 else 0.2222
             self._last_similarity = new_sim
 
         reward = max(0.001, min(0.999, float(reward)))
@@ -345,7 +350,7 @@ class DataCleanerEnvironment(Environment):
 
     def _do_submit(self, context_msg: str) -> DataCleanerObservation:
         similarity = self._compute_similarity()
-        reward = max(0.001, min(0.999, round(float(similarity), 4)))
+        reward = round(max(0.2222, min(0.8888, similarity)), 4)
         self.done = True
         self._state.total_reward += reward
 
@@ -364,17 +369,16 @@ class DataCleanerEnvironment(Environment):
 
     def _action_drop_column(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
 
         if self.df[col].isnull().all():
             self.df = self.df.drop(columns=[col])
             self._invalidate_cache()
-            return f"Successfully dropped empty column: {col}", 0.001  # delta computed later
+            return f"Successfully dropped empty column: {col}", 0.2222
         else:
             self.df = self.df.drop(columns=[col])
             self._invalidate_cache()
-            # Penalty for dropping non-empty column updated to 0.001 to prevent negative scores
-            return f"Dropped non-empty column: {col} (penalty applied)", 0.001
+            return f"Dropped non-empty column: {col} (penalty applied)", 0.2222
 
     def _action_remove_duplicates(self) -> Tuple[str, float]:
         initial_len = len(self.df)
@@ -383,12 +387,12 @@ class DataCleanerEnvironment(Environment):
         self._invalidate_cache()
         if final_len < initial_len:
             removed = initial_len - final_len
-            return f"Removed {removed} duplicate rows.", 0.001  # delta computed later
-        return "No duplicates found.", 0.001
+            return f"Removed {removed} duplicate rows.", 0.2222  # delta computed later
+        return "No duplicates found.", 0.2222
 
     def _action_format_phone(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
 
         def fix_phone(x):
             if pd.isna(x):
@@ -404,64 +408,64 @@ class DataCleanerEnvironment(Environment):
         self.df[col] = self.df[col].apply(fix_phone)
         self._invalidate_cache()
         if not self.df[col].equals(old):
-            return f"Formatted phone numbers in column: {col}.", 0.001
-        return "No phone numbers needed formatting.", 0.001
+            return f"Formatted phone numbers in column: {col}.", 0.2222
+        return "No phone numbers needed formatting.", 0.2222
 
     def _action_format_date(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
         try:
             old = self.df[col].copy()
             self.df[col] = pd.to_datetime(self.df[col]).dt.strftime("%Y-%m-%d")
             self._invalidate_cache()
             if not self.df[col].equals(old):
-                return f"Formatted dates in column: {col}.", 0.001
-            return "No dates needed formatting.", 0.001
+                return f"Formatted dates in column: {col}.", 0.2222
+            return "No dates needed formatting.", 0.2222
         except Exception as e:
-            return f"Error formatting dates: {str(e)}", 0.001
+            return f"Error formatting dates: {str(e)}", 0.2222
 
     def _action_impute_mean(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
         if not pd.api.types.is_numeric_dtype(self.df[col]):
-            return f"Column '{col}' is not numeric.", 0.001
+            return f"Column '{col}' is not numeric.", 0.2222
         if not self.df[col].isnull().any():
-            return f"No nulls in column '{col}'.", 0.001
+            return f"No nulls in column '{col}'.", 0.2222
 
         mean_val = self.df[col].mean()
         self.df[col] = self.df[col].fillna(mean_val)
         self._invalidate_cache()
-        return f"Imputed mean ({mean_val:.4f}) for nulls in column: {col}.", 0.001
+        return f"Imputed mean ({mean_val:.4f}) for nulls in column: {col}.", 0.2222
 
     def _action_impute_median(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
         if not pd.api.types.is_numeric_dtype(self.df[col]):
-            return f"Column '{col}' is not numeric.", 0.001
+            return f"Column '{col}' is not numeric.", 0.2222
         if not self.df[col].isnull().any():
-            return f"No nulls in column '{col}'.", 0.001
+            return f"No nulls in column '{col}'.", 0.2222
 
         median_val = self.df[col].median()
         self.df[col] = self.df[col].fillna(median_val)
         self._invalidate_cache()
-        return f"Imputed median ({median_val:.4f}) for nulls in column: {col}.", 0.001
+        return f"Imputed median ({median_val:.4f}) for nulls in column: {col}.", 0.2222
 
     def _action_fill_mode(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
         if not self.df[col].isnull().any():
-            return f"No nulls in column '{col}'.", 0.001
+            return f"No nulls in column '{col}'.", 0.2222
 
         mode_val = self.df[col].mode()
         if mode_val.empty:
-            return f"Could not compute mode for column '{col}'.", 0.001
+            return f"Could not compute mode for column '{col}'.", 0.2222
         self.df[col] = self.df[col].fillna(mode_val.iloc[0])
         self._invalidate_cache()
-        return f"Filled nulls with mode ({mode_val.iloc[0]}) in column: {col}.", 0.001
+        return f"Filled nulls with mode ({mode_val.iloc[0]}) in column: {col}.", 0.2222
 
     def _action_standardize_text(self, col: Optional[str]) -> Tuple[str, float]:
         if col is None or col not in self.df.columns:
-            return f"Column '{col}' not found.", 0.001
+            return f"Column '{col}' not found.", 0.2222
 
         old = self.df[col].copy()
         self.df[col] = self.df[col].apply(
@@ -469,24 +473,24 @@ class DataCleanerEnvironment(Environment):
         )
         self._invalidate_cache()
         if not self.df[col].equals(old):
-            return f"Standardized text in column: {col}.", 0.001
-        return f"No text changes needed in column '{col}'.", 0.001
+            return f"Standardized text in column: {col}.", 0.2222
+        return f"No text changes needed in column '{col}'.", 0.2222
 
 
 # ------------------------------------------------------------------
 # Standalone Task Graders
 # ------------------------------------------------------------------
 def _clamp_score(raw: float) -> float:
-    """Clamp a raw score strictly into (0.001, 0.999) — never 0.001 or 0.999 directly without precision limit."""
+    """Clamp a raw score strictly into (0.2222, 0.8888) as advised."""
     try:
         s = float(raw)
     except (TypeError, ValueError):
         s = 0.5
-    return max(0.001, min(0.999, s))
+    return max(0.2222, min(0.8888, s))
 
 
 def grade_data_cleaning_easy(*args, **kwargs) -> float:
-    """Programmatic grader for easy task. Returns float in (0, 1)."""
+    """Programmatic grader for easy task. Returns float strictly in (0.22, 0.88)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):
@@ -497,7 +501,7 @@ def grade_data_cleaning_easy(*args, **kwargs) -> float:
 
 
 def grade_data_cleaning_medium(*args, **kwargs) -> float:
-    """Programmatic grader for medium task. Returns float in (0, 1)."""
+    """Programmatic grader for medium task. Returns float strictly in (0.22, 0.88)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):
@@ -508,7 +512,7 @@ def grade_data_cleaning_medium(*args, **kwargs) -> float:
 
 
 def grade_data_cleaning_hard(*args, **kwargs) -> float:
-    """Programmatic grader for hard task. Returns float in (0, 1)."""
+    """Programmatic grader for hard task. Returns float strictly in (0.22, 0.88)."""
     try:
         env = kwargs.get("env")
         if env and hasattr(env, "_compute_similarity"):

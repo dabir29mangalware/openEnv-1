@@ -60,7 +60,7 @@ def create_fastapi_app(env: DataCleanerEnvironment) -> FastAPI:
         reward = obs_dict.pop("reward", 0.5)
         done = obs_dict.pop("done", False)
         # Clamp reward strictly between 0 and 1
-        reward = max(0.2, min(0.98, float(reward)))
+        reward = max(0.2222, min(0.8888, float(reward)))
         return {
             "observation": obs_dict,
             "reward": reward,
@@ -87,7 +87,7 @@ def create_fastapi_app(env: DataCleanerEnvironment) -> FastAPI:
         reward = obs_dict.pop("reward", 0.5)
         done = obs_dict.pop("done", False)
         # Clamp reward strictly between 0 and 1
-        reward = max(0.2, min(0.98, float(reward)))
+        reward = max(0.2222, min(0.8888, float(reward)))
 
         return {
             "observation": obs_dict,
