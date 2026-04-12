@@ -13,19 +13,10 @@ from envs.data_cleaner.client import DataCleanerClient
 # Configuration from environment variables
 # The hackathon platform injects API_BASE_URL and API_KEY — we MUST use them.
 # ---------------------------------------------------------------------------
-# LLM proxy (MUST use platform-provided values)
-try:
-    API_BASE_URL = os.environ["API_BASE_URL"]
-except KeyError:
-    API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
-
-try:
-    API_KEY = os.environ["API_KEY"]
-except KeyError:
-    API_KEY = os.getenv("HF_TOKEN", os.getenv("GROQ_API_KEY", ""))
-
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.environ.get("API_BASE_URL")
+API_KEY = os.environ.get("API_KEY")
+MODEL_NAME = os.environ.get("MODEL_NAME", "llama-3.3-70b-versatile")
+ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:8000")
 
 # Debug: show which API endpoint and (masked) key are in use
 print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
@@ -255,22 +246,19 @@ def main():
     parser.add_argument("--datasets", nargs="+", type=str, help="One or more paths to local CSV datasets to upload and clean", default=[None])
     args = parser.parse_args()
 
-    client = DataCleanerClient(base_url=ENV_BASE_URL)
+    env_client = DataCleanerClient(base_url=ENV_BASE_URL)
 
     # Wait for the environment server to be ready (up to 30s)
     print("[DEBUG] Waiting for environment server...", flush=True)
     for attempt in range(15):
-        if client.health():
+        if env_client.health():
             print(f"[DEBUG] Server healthy after {attempt + 1} attempts.", flush=True)
             break
         time.sleep(2)
     else:
         print("[WARN] Server not healthy after 30s, proceeding anyway...", flush=True)
 
-    llm = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=API_KEY,
-    )
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     print(f"[DEBUG] OpenAI client created with base_url={API_BASE_URL}", flush=True)
 
     all_scores = []
@@ -284,7 +272,7 @@ def main():
                 continue
             try:
                 print(f"\n{'='*50}\n[DEBUG] Uploading {dataset} to environment server...\n{'='*50}", flush=True)
-                server_dataset_path = client.upload(dataset)
+                server_dataset_path = env_client.upload(dataset)
             except Exception as e:
                 print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
                 continue
@@ -292,7 +280,7 @@ def main():
         total_score = 0.001
         for task in TASKS:
             try:
-                score = run_task(client, llm, task["task_id"], task["difficulty"], dataset_path=server_dataset_path)
+                score = run_task(env_client, client, task["task_id"], task["difficulty"], dataset_path=server_dataset_path)
             except Exception as e:
                 import traceback
                 print(f"[ERROR] Task '{task['task_id']}' failed with exception: {e}", flush=True)
