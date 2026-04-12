@@ -258,8 +258,11 @@ def main():
     else:
         print("[WARN] Server not healthy after 30s, proceeding anyway...", flush=True)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    print(f"[DEBUG] OpenAI client created with base_url={API_BASE_URL}", flush=True)
+    client = OpenAI(
+        api_key=os.environ.get("API_KEY"),
+        base_url=os.environ.get("API_BASE_URL")
+    )
+    print(f"[DEBUG] OpenAI client created with base_url={os.environ.get('API_BASE_URL')}", flush=True)
 
     all_scores = []
 
