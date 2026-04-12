@@ -92,11 +92,13 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
 def log_end(success: bool, steps: int, score: float, rewards: list):
     score = max(0.001, min(0.999, float(score)))
     rewards_payload = [round(max(0.2222, min(0.8888, float(r))), 4) for r in rewards]
-    print(
-        f"[END] "
-        f'{{"success": {str(success).lower()}, "steps": {steps}, "score": {score:.3f}, "rewards": {json.dumps(rewards_payload)}}}',
-        flush=True,
-    )
+    payload = {
+        "success": success,
+        "steps": steps,
+        "score": float(f"{score:.3f}"),
+        "rewards": rewards_payload,
+    }
+    print(f"[END] {json.dumps(payload)}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +285,7 @@ def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, mo
             break
 
     # Calculate final score from environment grader metadata with strict (0,1) clamping
-    metadata = obs.get("metadata", {}) if isinstance(obs, dict) else getattr(obs, "metadata", {}) or {}
+    metadata = obs.get("metadata", {}) if isinstance(obs, dict) else (getattr(obs, "metadata", None) or {})
     raw_score = metadata.get("grader_score", 0.0)
     if raw_score is None:
         raw_score = 0.0
