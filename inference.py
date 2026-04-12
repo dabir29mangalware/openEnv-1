@@ -16,7 +16,9 @@ from envs.data_cleaner.client import DataCleanerClient
 API_BASE_URL = os.environ.get("API_BASE_URL")
 API_KEY = os.environ.get("API_KEY")
 MODEL_NAME = os.environ.get("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-ENV_BASE_URL = os.environ.get("ENV_URL", os.environ.get("ENV_BASE_URL", "http://localhost:8000"))
+# Strip trailing slash to prevent //reset 307 redirects
+raw_env_url = os.environ.get("ENV_URL", os.environ.get("ENV_BASE_URL", "http://localhost:8000"))
+ENV_BASE_URL = raw_env_url.rstrip("/")
 
 # Debug: show which API endpoint and (masked) key are in use
 print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
