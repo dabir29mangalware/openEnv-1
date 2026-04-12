@@ -39,9 +39,9 @@ MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]  # seconds
 
 TASKS = [
-    {"difficulty": "easy", "name": "data_cleaning_easy"},
-    {"difficulty": "medium", "name": "data_cleaning_medium"},
-    {"difficulty": "hard", "name": "data_cleaning_hard"},
+    {"difficulty": "easy", "task_id": "data_cleaning_easy"},
+    {"difficulty": "medium", "task_id": "data_cleaning_medium"},
+    {"difficulty": "hard", "task_id": "data_cleaning_hard"},
 ]
 
 BENCHMARK = "data_cleaner"
@@ -59,7 +59,7 @@ def log_step(step: int, action: dict, reward: float, done: bool, error=None):
     payload = {
         "step": step,
         "action": action,
-        "reward": round(max(0.2, min(0.98, float(reward))), 4),
+        "reward": round(max(0.001, min(0.999, float(reward))), 4),
         "done": done,
         "error": str(error) if error else None,
     }
@@ -70,8 +70,8 @@ def log_end(success: bool, steps: int, score: float, rewards: list):
     payload = {
         "success": success,
         "steps": steps,
-        "score": round(max(0.2, min(0.98, float(score))), 4),
-        "rewards": [round(max(0.2, min(0.98, float(r))), 4) for r in rewards],
+        "score": round(max(0.001, min(0.999, float(score))), 4),
+        "rewards": [round(max(0.001, min(0.999, float(r))), 4) for r in rewards],
     }
     print(f"[END] {json.dumps(payload)}", flush=True)
 
@@ -169,68 +169,81 @@ def call_llm(llm, model: str, messages: list) -> dict:
 # ---------------------------------------------------------------------------
 # Run a single task (difficulty)
 # ---------------------------------------------------------------------------
-def run_task(client: DataCleanerClient, llm, task_name: str, difficulty: str, dataset_path: str = None):
-    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
+def run_task(client: DataCleanerClient, llm, task_id: str, difficulty: str, dataset_path: str = None):
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
     rewards = []
     steps_taken = 0
-    score = 0.0
+    score = 0.001
     success = False
 
     try:
-        obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
-    except Exception as e:
-        print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
-        log_end(success=False, steps=0, score=0.2, rewards=[])
-        return 0.2
-
-    # Message history with sliding window
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    max_steps = obs.max_steps
-
-    for step in range(1, max_steps + 1):
-        if obs.done:
-            break
-
-        # Build compact state and add to messages
-        state_str = build_compact_state(obs, step)
-        messages.append(
-            {"role": "user", "content": f"{state_str}\nProvide next action JSON."}
-        )
-
-        # Sliding window: keep only system + last N pairs
-        if len(messages) > 1 + MAX_HISTORY_PAIRS * 2:
-            messages = [messages[0]] + messages[-(MAX_HISTORY_PAIRS * 2):]
-
-        # Get action from LLM
-        action_dict = call_llm(llm, MODEL_NAME, messages)
-        raw_action = json.dumps(action_dict)
-        messages.append({"role": "assistant", "content": raw_action})
-
-        # Execute action
-        error = None
         try:
-            obs, reward, done, info = client.step(action_dict)
+            obs = client.reset(difficulty=difficulty, dataset_path=dataset_path)
         except Exception as e:
-            error = str(e)
-            reward = 0.0
-            print(f"[DEBUG] Step error: {e}", flush=True)
+            print(f"[DEBUG] Failed to connect to environment: {e}", flush=True)
+            score = 0.001
+            return score
 
-        rewards.append(reward)
-        steps_taken = step
+        # Message history with sliding window
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        log_step(step=step, action=action_dict, reward=reward, done=obs.done, error=error)
+        max_steps = obs.max_steps
 
-        if obs.done:
-            break
+        for step in range(1, max_steps + 1):
+            if obs.done:
+                break
 
-    # Calculate final score: use final reward
-    score = rewards[-1] if rewards else 0.0
-    score = max(0.2, min(0.98, float(score)))
-    success = score >= 0.5
+            # Build compact state and add to messages
+            state_str = build_compact_state(obs, step)
+            messages.append(
+                {"role": "user", "content": f"{state_str}\nProvide next action JSON."}
+            )
 
-    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+            # Sliding window: keep only system + last N pairs
+            if len(messages) > 1 + MAX_HISTORY_PAIRS * 2:
+                messages = [messages[0]] + messages[-(MAX_HISTORY_PAIRS * 2):]
+
+            # Get action from LLM
+            action_dict = call_llm(llm, MODEL_NAME, messages)
+            raw_action = json.dumps(action_dict)
+            messages.append({"role": "assistant", "content": raw_action})
+
+            # Execute action
+            error = None
+            try:
+                obs, reward, done, info = client.step(action_dict)
+            except Exception as e:
+                error = str(e)
+                reward = 0.001
+                print(f"[DEBUG] Step error: {e}", flush=True)
+
+            reward = max(0.001, min(0.999, float(reward)))
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(step=step, action=action_dict, reward=reward, done=obs.done, error=error)
+
+            if obs.done:
+                break
+
+        # Calculate final score: use final reward
+        score = rewards[-1] if rewards else 0.001
+        score = max(0.001, min(0.999, float(score)))
+        success = score >= 0.5
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] run_task crashed: {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        score = 0.001
+        success = False
+
+    finally:
+        # ALWAYS emit [END] log, even on crash
+        score = max(0.001, min(0.999, float(score)))
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
     return score
 
 
@@ -276,16 +289,23 @@ def main():
                 print(f"[ERROR] Upload failed for {dataset}: {e}", flush=True)
                 continue
 
-        total_score = 0.0
+        total_score = 0.001
         for task in TASKS:
-            score = run_task(client, llm, task["name"], task["difficulty"], dataset_path=server_dataset_path)
+            try:
+                score = run_task(client, llm, task["task_id"], task["difficulty"], dataset_path=server_dataset_path)
+            except Exception as e:
+                import traceback
+                print(f"[ERROR] Task '{task['task_id']}' failed with exception: {e}", flush=True)
+                print(traceback.format_exc(), flush=True)
+                score = 0.001
+            score = max(0.001, min(0.999, float(score)))
             total_score += score
             all_scores.append(score)
-            print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['name']}' score: {score:.4f}", flush=True)
+            print(f"[DEBUG] Dataset {dataset or 'Random'} | Task '{task['task_id']}' score: {score:.4f}", flush=True)
 
     if all_scores:
         avg_score = sum(all_scores) / len(all_scores)
-        avg_score = max(0.2, min(0.98, float(avg_score)))
+        avg_score = max(0.001, min(0.999, float(avg_score)))
         print(f"\n[DEBUG] Overall average score across all executed tasks/datasets: {avg_score:.4f}", flush=True)
 
 
